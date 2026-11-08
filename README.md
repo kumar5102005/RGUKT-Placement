@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # RGUKT Ongole Placement Hub
 
 A containerized, microservices-based placement management platform for **Rajiv Gandhi University of Knowledge Technologies (RGUKT) Ongole**.
@@ -248,3 +249,7 @@ The test suite validates:
 - **Phase 8: Application Service & Selection Workflow** — Pending
 - **Phase 9: Notification Service & Message Broker** — Pending
 - **Phase 10: End-to-End Integration & Final Polish** — Pending
+=======
+# RGUKT-Placement
+placement hub for RGUKT ongole
+>>>>>>> origin/main
