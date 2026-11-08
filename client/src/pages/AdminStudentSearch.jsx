@@ -255,7 +255,8 @@ export default function AdminStudentSearch() {
                     <td className="py-3 px-4">
                       {s.resumeUrl ? (
                         <a
-                          href={`http://localhost:8080/api/v1/students${s.resumeUrl}`}
+                          // href={`http://localhost:8080/api/v1/students${s.resumeUrl}`}
+                          href={`/api/v1/students${s.resumeUrl}`}
                           target="_blank"
                           rel="noreferrer"
                           className="inline-flex items-center space-x-1 text-emerald-400 hover:text-emerald-300 font-medium transition"

@@ -21,19 +21,36 @@ app.use(express.json());
 app.use(morgan("combined"));
 
 // Health check endpoint
+// app.get("/health", (req, res) => {
+//   const dbStatus = mongoose.connection.readyState === 1 ? "connected" : "disconnected";
+//   res.status(200).json({
+//     status: "ok",
+//     service: SERVICE_NAME,
+//     timestamp: new Date().toISOString(),
+//     uptime: process.uptime(),
+//     database: {
+//       status: dbStatus,
+//       target: "rgukt_auth_db"
+//     }
+//   });
+// });
+
+
 app.get("/health", (req, res) => {
-  const dbStatus = mongoose.connection.readyState === 1 ? "connected" : "disconnected";
-  res.status(200).json({
-    status: "ok",
+  const connected = mongoose.connection.readyState === 1;
+
+  res.status(connected ? 200 : 503).json({
+    status: connected ? "ok" : "degraded",
     service: SERVICE_NAME,
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     database: {
-      status: dbStatus,
+      status: connected ? "connected" : "disconnected",
       target: "rgukt_auth_db"
     }
   });
 });
+
 
 // Mount Auth routes (supported at root and with /api/v1/auth prefix)
 app.use("/api/v1/auth", authRoutes);
@@ -51,16 +68,37 @@ app.use((err, req, res, next) => {
   });
 });
 
-async function start() {
-  if (MONGODB_URI) {
-    await connectDB(MONGODB_URI, logger);
-  } else {
-    logger.warn("MONGODB_URI not configured in environment");
-  }
+// async function start() {
+//   if (MONGODB_URI) {
+//     await connectDB(MONGODB_URI, logger);
+//   } else {
+//     logger.warn("MONGODB_URI not configured in environment");
+//   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    logger.info(`${SERVICE_NAME} running on port ${PORT}`);
-  });
+//   app.listen(PORT, "0.0.0.0", () => {
+//     logger.info(`${SERVICE_NAME} running on port ${PORT}`);
+//   });
+// }
+
+
+async function start() {
+  try {
+    if (!MONGODB_URI) {
+      throw new Error("MONGODB_URI is not configured");
+    }
+
+    await connectDB(MONGODB_URI, logger);
+
+    app.listen(PORT, "0.0.0.0", () => {
+      logger.info(`${SERVICE_NAME} running on port ${PORT}`);
+    });
+  } catch (err) {
+    logger.error("Auth service startup failed", {
+      error: err.message
+    });
+
+    process.exit(1);
+  }
 }
 
 start();

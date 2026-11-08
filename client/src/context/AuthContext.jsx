@@ -160,18 +160,32 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        accessToken,
-        isAuthenticated: Boolean(user && accessToken),
-        loading,
-        login,
-        register,
-        logout,
-        refreshSession,
-      }}
-    >
+    // <AuthContext.Provider
+    //   value={{
+    //     user,
+    //     accessToken,
+    //     isAuthenticated: Boolean(user && accessToken),
+    //     loading,
+    //     login,
+    //     register,
+    //     logout,
+    //     refreshSession,
+    //   }}
+    // >
+      
+      <AuthContext.Provider
+        value={{
+          user,
+          accessToken,
+          token: accessToken, // Backward compatibility for existing components
+          isAuthenticated: Boolean(user && accessToken),
+          loading,
+          login,
+          register,
+          logout,
+          refreshSession,
+        }}
+      >
       {children}
     </AuthContext.Provider>
   );

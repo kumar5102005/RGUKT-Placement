@@ -726,7 +726,7 @@ export default function StudentProfile() {
               </p>
               {profile.resumeUrl && (
                 <a
-                  href={`http://localhost:8080/api/v1/students${profile.resumeUrl}`}
+                  href={`/api/v1/students${profile.resumeUrl}`}
                   target="_blank"
                   rel="noreferrer"
                   className="inline-flex items-center space-x-1 text-xs text-emerald-400 hover:text-emerald-300 font-medium mt-2 transition"

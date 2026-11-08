@@ -52,10 +52,25 @@ export function generateRefreshToken() {
 /**
  * Verify JWT access token
  */
+// export function verifyAccessToken(token) {
+//   try {
+//     return jwt.verify(token, JWT_SECRET);
+//   } catch (err) {
+//     return null;
+//   }
+// }
+
 export function verifyAccessToken(token) {
   try {
-    return jwt.verify(token, JWT_SECRET);
+    return jwt.verify(token, JWT_SECRET, {
+      algorithms: ["HS256"],
+    });
   } catch (err) {
+    console.error("JWT Verification Failed:", {
+      name: err.name,
+      message: err.message,
+    });
+
     return null;
   }
 }
