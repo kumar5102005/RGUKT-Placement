@@ -71,6 +71,7 @@ services:
       NODE_ENV: ${NODE_ENV:-development}
       MONGODB_URI: ${STUDENT_DB_URI:-mongodb://student-db:27017/rgukt_student_db}
       SERVICE_API_KEY: ${SERVICE_API_KEY:-rgukt_placement_internal_secret_key_2026}
+      JWT_SECRET: ${JWT_SECRET:-rgukt_super_secure_jwt_secret_token_2026_dev_key}
     expose:
       - "4002"
     depends_on:
@@ -103,6 +104,7 @@ services:
       NODE_ENV: ${NODE_ENV:-development}
       MONGODB_URI: ${DRIVE_DB_URI:-mongodb://drive-db:27017/rgukt_drive_db}
       SERVICE_API_KEY: ${SERVICE_API_KEY:-rgukt_placement_internal_secret_key_2026}
+      JWT_SECRET: ${JWT_SECRET:-rgukt_super_secure_jwt_secret_token_2026_dev_key}
     expose:
       - "4003"
     depends_on:
@@ -135,6 +137,7 @@ services:
       NODE_ENV: ${NODE_ENV:-development}
       MONGODB_URI: ${APPLICATION_DB_URI:-mongodb://application-db:27017/rgukt_application_db}
       SERVICE_API_KEY: ${SERVICE_API_KEY:-rgukt_placement_internal_secret_key_2026}
+      JWT_SECRET: ${JWT_SECRET:-rgukt_super_secure_jwt_secret_token_2026_dev_key}
     expose:
       - "4004"
     depends_on:
