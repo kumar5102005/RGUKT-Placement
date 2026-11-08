@@ -1,0 +1,202 @@
+services:
+  # ── API Gateway (Edge Routing & Rate Limiting) ──────────────────────────────
+  gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    ports:
+      - "${GATEWAY_PORT:-8080}:80"
+    depends_on:
+      - client
+      - auth-service
+      - student-service
+      - company-drive-service
+      - application-service
+      - notification-service
+    networks:
+      - placement_network
+    restart: unless-stopped
+
+  # ── Frontend Web Client (React + Vite + Tailwind CSS) ─────────────────────────
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    expose:
+      - "80"
+    networks:
+      - placement_network
+    restart: unless-stopped
+
+  # ── Auth Service & Dedicated Database ─────────────────────────────────────────
+  auth-service:
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile
+    environment:
+      PORT: 4001
+      NODE_ENV: ${NODE_ENV:-development}
+      MONGODB_URI: ${AUTH_DB_URI:-mongodb://auth-db:27017/rgukt_auth_db}
+      JWT_SECRET: ${JWT_SECRET:-rgukt_super_secure_jwt_secret_token_2026_dev_key}
+      SERVICE_API_KEY: ${SERVICE_API_KEY:-rgukt_placement_internal_secret_key_2026}
+    expose:
+      - "4001"
+    depends_on:
+      auth-db:
+        condition: service_healthy
+    networks:
+      - placement_network
+    restart: unless-stopped
+
+  auth-db:
+    image: mongo:7.0
+    volumes:
+      - auth_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - placement_network
+    restart: unless-stopped
+
+  # ── Student Service & Dedicated Database ──────────────────────────────────────
+  student-service:
+    build:
+      context: ./services/student-service
+      dockerfile: Dockerfile
+    environment:
+      PORT: 4002
+      NODE_ENV: ${NODE_ENV:-development}
+      MONGODB_URI: ${STUDENT_DB_URI:-mongodb://student-db:27017/rgukt_student_db}
+      SERVICE_API_KEY: ${SERVICE_API_KEY:-rgukt_placement_internal_secret_key_2026}
+    expose:
+      - "4002"
+    depends_on:
+      student-db:
+        condition: service_healthy
+    networks:
+      - placement_network
+    restart: unless-stopped
+
+  student-db:
+    image: mongo:7.0
+    volumes:
+      - student_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - placement_network
+    restart: unless-stopped
+
+  # ── Company & Drive Service & Dedicated Database ──────────────────────────────
+  company-drive-service:
+    build:
+      context: ./services/company-drive-service
+      dockerfile: Dockerfile
+    environment:
+      PORT: 4003
+      NODE_ENV: ${NODE_ENV:-development}
+      MONGODB_URI: ${DRIVE_DB_URI:-mongodb://drive-db:27017/rgukt_drive_db}
+      SERVICE_API_KEY: ${SERVICE_API_KEY:-rgukt_placement_internal_secret_key_2026}
+    expose:
+      - "4003"
+    depends_on:
+      drive-db:
+        condition: service_healthy
+    networks:
+      - placement_network
+    restart: unless-stopped
+
+  drive-db:
+    image: mongo:7.0
+    volumes:
+      - drive_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - placement_network
+    restart: unless-stopped
+
+  # ── Application Service & Dedicated Database ──────────────────────────────────
+  application-service:
+    build:
+      context: ./services/application-service
+      dockerfile: Dockerfile
+    environment:
+      PORT: 4004
+      NODE_ENV: ${NODE_ENV:-development}
+      MONGODB_URI: ${APPLICATION_DB_URI:-mongodb://application-db:27017/rgukt_application_db}
+      SERVICE_API_KEY: ${SERVICE_API_KEY:-rgukt_placement_internal_secret_key_2026}
+    expose:
+      - "4004"
+    depends_on:
+      application-db:
+        condition: service_healthy
+    networks:
+      - placement_network
+    restart: unless-stopped
+
+  application-db:
+    image: mongo:7.0
+    volumes:
+      - application_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - placement_network
+    restart: unless-stopped
+
+  # ── Notification Service & Dedicated Database ─────────────────────────────────
+  notification-service:
+    build:
+      context: ./services/notification-service
+      dockerfile: Dockerfile
+    environment:
+      PORT: 4005
+      NODE_ENV: ${NODE_ENV:-development}
+      MONGODB_URI: ${NOTIFICATION_DB_URI:-mongodb://notification-db:27017/rgukt_notification_db}
+      SERVICE_API_KEY: ${SERVICE_API_KEY:-rgukt_placement_internal_secret_key_2026}
+    expose:
+      - "4005"
+    depends_on:
+      notification-db:
+        condition: service_healthy
+    networks:
+      - placement_network
+    restart: unless-stopped
+
+  notification-db:
+    image: mongo:7.0
+    volumes:
+      - notification_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - placement_network
+    restart: unless-stopped
+
+networks:
+  placement_network:
+    driver: bridge
+
+volumes:
+  auth_data:
+  student_data:
+  drive_data:
+  application_data:
+  notification_data:
+

@@ -1,0 +1,31 @@
+{
+  "name": "rgukt-placement-hub",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "RGUKT Ongole Placement Hub - Microservices Platform",
+  "workspaces": [
+    "client",
+    "services/*"
+  ],
+  "scripts": {
+    "install:all": "npm install && npm run install:services",
+    "install:services": "npm --prefix services/auth-service install && npm --prefix services/student-service install && npm --prefix services/company-drive-service install && npm --prefix services/application-service install && npm --prefix services/notification-service install && npm --prefix client install",
+    "dev:client": "npm --prefix client run dev",
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f",
+    "test:health": "node scripts/test-health.js"
+  },
+  "keywords": [
+    "rgukt",
+    "placement-hub",
+    "microservices",
+    "react",
+    "express",
+    "mongodb"
+  ],
+  "author": "RGUKT Ongole",
+  "license": "ISC"
+}
+

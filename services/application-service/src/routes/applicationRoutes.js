@@ -1,0 +1,75 @@
+import { Router } from 'express';
+import { authenticate, authorize } from '../middleware/auth.js';
+import {
+  validateApplicationSubmission,
+  validateStageTransition,
+  validateInterviewSchedule,
+} from '../middleware/applicationValidation.js';
+import {
+  applyForJob,
+  getMyApplications,
+  getApplications,
+  getApplicationById,
+  updateApplicationStage,
+  scheduleInterview,
+  submitInterviewEvaluation,
+  updatePlacementOffer,
+  getWorkflowStages,
+  createCustomStage,
+} from '../controllers/applicationController.js';
+
+const router = Router();
+
+// ─── Workflow Stages (Standard & Configurable) ──────────────────────────────
+router.get('/stages', authenticate, getWorkflowStages);
+router.post('/stages', authenticate, authorize('ADMIN'), createCustomStage);
+
+// ─── Student Applications ───────────────────────────────────────────────────
+router.post(
+  '/',
+  authenticate,
+  authorize('STUDENT'),
+  validateApplicationSubmission,
+  applyForJob
+);
+router.get('/my', authenticate, authorize('STUDENT'), getMyApplications);
+
+// ─── Recruiter & Admin Management ───────────────────────────────────────────
+router.get('/', authenticate, authorize('RECRUITER', 'ADMIN'), getApplications);
+router.get('/:id', authenticate, getApplicationById);
+
+// ─── Stage Transitions & Shortlisting ───────────────────────────────────────
+router.patch(
+  '/:id/stage',
+  authenticate,
+  authorize('RECRUITER', 'ADMIN'),
+  validateStageTransition,
+  updateApplicationStage
+);
+
+// ─── Interview Management ───────────────────────────────────────────────────
+router.post(
+  '/:id/interviews',
+  authenticate,
+  authorize('RECRUITER', 'ADMIN'),
+  validateInterviewSchedule,
+  scheduleInterview
+);
+
+router.patch(
+  '/:id/interviews/:roundNumber/evaluation',
+  authenticate,
+  authorize('RECRUITER', 'ADMIN'),
+  submitInterviewEvaluation
+);
+
+// ─── Final Placement Status & Offer ─────────────────────────────────────────
+router.patch(
+  '/:id/offer',
+  authenticate,
+  authorize('RECRUITER', 'ADMIN'),
+  updatePlacementOffer
+);
+
+export default router;
+
