@@ -11,7 +11,6 @@ import {
   LogOut,
   Users,
   FileText,
-  KeyRound,
   ExternalLink,
   Building2,
   CheckCircle2,
@@ -271,28 +270,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Security & Token Diagnostics */}
-      <div className="bg-slate-800/40 border border-slate-700 rounded-xl p-5 space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <KeyRound className="w-4 h-4 text-emerald-400" />
-            <h4 className="text-sm font-semibold text-white">Active JWT Security Session</h4>
-          </div>
-          <button
-            onClick={handleRefresh}
-            disabled={refreshing}
-            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-md bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-xs font-medium transition"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-            <span>Test Token Rotation</span>
-          </button>
-        </div>
-        <div className="bg-slate-900 rounded-lg p-3 font-mono text-xs text-slate-400 break-all space-y-1">
-          <div><span className="text-emerald-400 font-bold">Token Prefix:</span> {accessToken ? accessToken.substring(0, 32) + '...' : 'None'}</div>
-          <div><span className="text-emerald-400 font-bold">User ID:</span> {user?.id}</div>
-          <div><span className="text-emerald-400 font-bold">Role:</span> {user?.role}</div>
-        </div>
-      </div>
+
     </div>
   );
 }

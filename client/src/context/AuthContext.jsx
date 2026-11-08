@@ -5,22 +5,11 @@ const AuthContext = createContext(null);
 const API_BASE_URL = "/api/v1/auth";
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(() => {
-    try {
-      const saved = localStorage.getItem("rgukt_user");
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
-  });
+  const [user, setUser] = useState(null);
 
-  const [accessToken, setAccessToken] = useState(() => {
-    return localStorage.getItem("rgukt_access_token") || null;
-  });
+  const [accessToken, setAccessToken] = useState(null);
 
-  const [refreshToken, setRefreshToken] = useState(() => {
-    return localStorage.getItem("rgukt_refresh_token") || null;
-  });
+  const [refreshToken, setRefreshToken] = useState(null);
 
   const [loading, setLoading] = useState(true);
 
@@ -40,7 +29,7 @@ export function AuthProvider({ children }) {
         const data = await res.json();
         if (data.success && data.data?.user) {
           setUser(data.data.user);
-          localStorage.setItem("rgukt_user", JSON.stringify(data.data.user));
+
         } else {
           // Token expired or invalid, attempt refresh if refresh token is present
           if (refreshToken) {
@@ -74,8 +63,8 @@ export function AuthProvider({ children }) {
       if (data.success && data.data?.accessToken) {
         setAccessToken(data.data.accessToken);
         setRefreshToken(data.data.refreshToken);
-        localStorage.setItem("rgukt_access_token", data.data.accessToken);
-        localStorage.setItem("rgukt_refresh_token", data.data.refreshToken);
+
+
         return true;
       } else {
         logout();
@@ -105,9 +94,8 @@ export function AuthProvider({ children }) {
     setRefreshToken(newRefresh);
     setUser(newUser);
 
-    localStorage.setItem("rgukt_access_token", newAccess);
-    localStorage.setItem("rgukt_refresh_token", newRefresh);
-    localStorage.setItem("rgukt_user", JSON.stringify(newUser));
+
+
 
     return newUser;
   }
@@ -131,9 +119,8 @@ export function AuthProvider({ children }) {
     setRefreshToken(newRefresh);
     setUser(newUser);
 
-    localStorage.setItem("rgukt_access_token", newAccess);
-    localStorage.setItem("rgukt_refresh_token", newRefresh);
-    localStorage.setItem("rgukt_user", JSON.stringify(newUser));
+
+
 
     return newUser;
   }
