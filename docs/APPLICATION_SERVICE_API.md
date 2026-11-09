@@ -15,15 +15,22 @@ Replace `<PORT>` with the port your **application-service** is running on (defau
   ```json
   {
     "jobId": "<job-id>",
-    "studentUserId": "<student-user-id>",
-    "coverLetter": "Optional cover letter text",
-    "resumeUrl": "URL to the uploaded resume (optional)"
+    "coverLetter": "Optional cover letter text"
   }
   ```
 - **Responses**:
-  - `201 Created` – Application created.
-  - `400 Bad Request` – Validation failed (ineligible, deadline passed, etc.).
+  - `201 Created` – Application created using the authenticated student's verified profile.
+  - `422 Unprocessable Entity` – Ineligible or required academic profile data is missing.
+  - `400 Bad Request` – Job is closed or its application deadline has passed.
   - `409 Conflict` – Duplicate application (student already applied for this job).
+
+The service ignores browser-supplied student identity, academic, resume, and eligibility values. It loads the profile and job from their owning services, reevaluates eligibility, and stores the authoritative profile snapshot. `GET /my` includes the application's recruitment-round snapshot, including applicant-visible schedule, venue, and status updates.
+
+### Internal: Synchronize Job Recruitment Rounds
+- **Endpoint**: `PUT /internal/jobs/:jobId/recruitment-rounds`
+- **Authentication**: `x-service-key`
+- **Purpose**: Updates existing application round snapshots and sends idempotent in-app update notifications.
+- **Retry behavior**: Repeating the same update is safe; event IDs prevent duplicate notifications.
 
 ---
 
@@ -145,4 +152,3 @@ Replace `<PORT>` with the port your **application-service** is running on (defau
 - For internal service‑to‑service calls (e.g., when Job Service notifies Application Service), include the `x-service-key` header with the internal key configured via `SERVICE_API_KEY` env var.
 - Stage transitions are recorded in the `history` array of the `Application` model for auditability.
 - The `Application` schema indexes `{ jobId, studentUserId }` uniquely to prevent duplicate submissions.
-

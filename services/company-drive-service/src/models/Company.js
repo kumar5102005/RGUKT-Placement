@@ -27,7 +27,7 @@ const recruiterEntrySchema = new mongoose.Schema(
     phone: { type: String, default: '', trim: true },
     role: { type: String, enum: ['PRIMARY', 'SECONDARY'], default: 'SECONDARY' },
     status: { type: String, enum: ['ACTIVE', 'INVITED', 'INACTIVE'], default: 'ACTIVE' },
-    temporaryPassword: { type: String, default: '' },
+    temporaryPassword: { type: String, select: false },
     addedAt: { type: Date, default: Date.now },
   },
   { _id: true }
@@ -172,4 +172,3 @@ companySchema.statics.VERIFICATION_STATUS = VERIFICATION_STATUS;
 
 const Company = mongoose.model('Company', companySchema);
 export default Company;
-

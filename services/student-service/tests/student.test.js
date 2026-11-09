@@ -7,8 +7,12 @@ import http from "node:http";
 import jwt from "jsonwebtoken";
 
 const BASE_URL = process.env.TEST_STUDENT_URL || "http://localhost:4002";
-const JWT_SECRET = process.env.JWT_SECRET || "rgukt_super_secure_jwt_secret_token_2026_dev_key";
-const SERVICE_API_KEY = process.env.SERVICE_API_KEY || "rgukt_placement_internal_secret_key_2026";
+const JWT_SECRET = process.env.JWT_SECRET;
+const SERVICE_API_KEY = process.env.SERVICE_API_KEY;
+
+if (!JWT_SECRET || !SERVICE_API_KEY) {
+  throw new Error("JWT_SECRET and SERVICE_API_KEY must be configured to run Student Service integration tests.");
+}
 
 function generateTestToken(user) {
   return jwt.sign(user, JWT_SECRET, { expiresIn: "1h" });
@@ -235,4 +239,3 @@ async function runTests() {
 }
 
 runTests();
-

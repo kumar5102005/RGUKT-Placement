@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext.jsx';
 import {
   Briefcase, Plus, Edit3, Trash2, CheckCircle2, XCircle,
   Clock, AlertCircle, Loader2, Building2, Eye, Calendar,
-  DollarSign, MapPin, Tag, RefreshCw, X
+  DollarSign, MapPin, Tag, RefreshCw, X, ChevronUp, ChevronDown
 } from 'lucide-react';
 
 const API_BASE = '/api/v1/jobs';
@@ -13,6 +13,14 @@ const COMPANY_API_BASE = '/api/v1/drives';
 const ALL_BRANCHES = ['CSE', 'ECE', 'EEE', 'MECH', 'CIVIL', 'CHEM', 'MME'];
 const ROLE_CATEGORIES = ['Full-Time', 'Internship', 'Internship + PPO', 'Contract'];
 const WORKPLACE_TYPES = ['On-site', 'Hybrid', 'Remote'];
+const ROUND_STATUSES = ['PLANNED', 'SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'];
+
+function toLocalDateTime(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+}
 
 export default function RecruiterJobManagement() {
   const { user, token } = useAuth();
@@ -160,7 +168,13 @@ export default function RecruiterJobManagement() {
       maxHistoryBacklogs: String(job.eligibility?.maxHistoryBacklogs ?? '2'),
       minTenthPercentage: String(job.eligibility?.minTenthPercentage ?? '60'),
       minTwelfthPucCgpa: String(job.eligibility?.minTwelfthPucCgpa ?? '6.0'),
-      selectionRounds: job.selectionRounds?.length ? job.selectionRounds : [
+      selectionRounds: job.selectionRounds?.length ? [...job.selectionRounds]
+        .sort((a, b) => a.roundNumber - b.roundNumber)
+        .map((round, index) => ({
+          ...round,
+          roundNumber: index + 1,
+          scheduledDate: toLocalDateTime(round.scheduledDate),
+        })) : [
         { roundNumber: 1, name: 'Technical Assessment', mode: 'Online' },
       ],
       applicationDeadline: job.applicationDeadline ? new Date(job.applicationDeadline).toISOString().slice(0, 16) : '',
@@ -179,6 +193,62 @@ export default function RecruiterJobManagement() {
         : [...prev.allowedBranches, branch];
       return { ...prev, allowedBranches: newBranches };
     });
+  }
+
+  function updateRound(index, field, value) {
+    setFormData((prev) => ({
+      ...prev,
+      selectionRounds: prev.selectionRounds.map((round, roundIndex) =>
+        roundIndex === index ? { ...round, [field]: value } : round
+      ),
+    }));
+  }
+
+  function addRound() {
+    setFormData((prev) => ({
+      ...prev,
+      selectionRounds: [
+        ...prev.selectionRounds,
+        {
+          roundNumber: prev.selectionRounds.length + 1,
+          name: '',
+          description: '',
+          mode: 'Online',
+          scheduledDate: '',
+          durationMinutes: '',
+          venueOrLink: '',
+          status: 'PLANNED',
+        },
+      ],
+    }));
+  }
+
+  function moveRound(index, offset) {
+    setFormData((prev) => {
+      const targetIndex = index + offset;
+      if (targetIndex < 0 || targetIndex >= prev.selectionRounds.length) return prev;
+      const selectionRounds = [...prev.selectionRounds];
+      [selectionRounds[index], selectionRounds[targetIndex]] = [
+        selectionRounds[targetIndex],
+        selectionRounds[index],
+      ];
+      return {
+        ...prev,
+        selectionRounds: selectionRounds.map((round, roundIndex) => ({
+          ...round,
+          roundNumber: roundIndex + 1,
+        })),
+      };
+    });
+  }
+
+  function removeRound(index) {
+    setFormData((prev) => ({
+      ...prev,
+      selectionRounds: prev.selectionRounds
+        .filter((_, roundIndex) => roundIndex !== index)
+        .map((round, roundIndex) => ({ ...round, roundNumber: roundIndex + 1 })),
+    }));
   }
 
   async function handleSaveJob(e) {
@@ -213,7 +283,12 @@ export default function RecruiterJobManagement() {
           minTenthPercentage: parseFloat(formData.minTenthPercentage) || 0,
           minTwelfthPucCgpa: parseFloat(formData.minTwelfthPucCgpa) || 0,
         },
-        selectionRounds: formData.selectionRounds,
+        selectionRounds: formData.selectionRounds.map((round, index) => ({
+          ...round,
+          roundNumber: index + 1,
+          scheduledDate: round.scheduledDate || null,
+          durationMinutes: round.durationMinutes === '' ? null : Number(round.durationMinutes),
+        })),
         applicationDeadline: formData.applicationDeadline,
         driveDate: formData.driveDate || null,
         status: formData.status,
@@ -655,6 +730,44 @@ export default function RecruiterJobManagement() {
                       className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white text-xs focus:outline-none focus:border-emerald-500"
                     />
                   </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-1">Max Historical Backlogs</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={formData.maxHistoryBacklogs}
+                      onChange={(e) => setFormData({ ...formData, maxHistoryBacklogs: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white text-xs focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-1">Min 10th Percentage</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.1"
+                      value={formData.minTenthPercentage}
+                      onChange={(e) => setFormData({ ...formData, minTenthPercentage: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white text-xs focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-1">Min PUC CGPA</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="10"
+                      step="0.1"
+                      value={formData.minTwelfthPucCgpa}
+                      onChange={(e) => setFormData({ ...formData, minTwelfthPucCgpa: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white text-xs focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
                 </div>
 
                 {/* Branches checkboxes */}
@@ -682,9 +795,132 @@ export default function RecruiterJobManagement() {
                 </div>
               </div>
 
+              {/* Recruitment Rounds */}
+              <div className="space-y-4 bg-slate-800/40 p-4 rounded-xl border border-slate-800">
+                <div className="flex items-center justify-between gap-3">
+                  <h4 className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">
+                    4. Recruitment Rounds
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={addRound}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-xs font-medium"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Add round
+                  </button>
+                </div>
+
+                {formData.selectionRounds.length === 0 && (
+                  <p className="text-xs text-slate-400">No rounds added. Add a round to show candidates the selection process.</p>
+                )}
+
+                <div className="space-y-3">
+                  {formData.selectionRounds.map((round, index) => (
+                    <div key={`${round.roundNumber}-${index}`} className="space-y-3 p-3 rounded-lg bg-slate-900/70 border border-slate-700">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-xs font-semibold text-slate-200">Round {index + 1}</span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => moveRound(index, -1)}
+                            disabled={index === 0}
+                            aria-label={`Move round ${index + 1} up`}
+                            className="p-1.5 rounded text-slate-400 hover:text-white hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed"
+                          >
+                            <ChevronUp className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => moveRound(index, 1)}
+                            disabled={index === formData.selectionRounds.length - 1}
+                            aria-label={`Move round ${index + 1} down`}
+                            className="p-1.5 rounded text-slate-400 hover:text-white hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed"
+                          >
+                            <ChevronDown className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeRound(index)}
+                            aria-label={`Remove round ${index + 1}`}
+                            className="p-1.5 rounded text-slate-400 hover:text-rose-400 hover:bg-rose-500/10"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                        <input
+                          required
+                          type="text"
+                          value={round.name || ''}
+                          onChange={(e) => updateRound(index, 'name', e.target.value)}
+                          placeholder="Round name"
+                          aria-label={`Round ${index + 1} name`}
+                          className="sm:col-span-2 px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-xs focus:outline-none focus:border-emerald-500"
+                        />
+                        <select
+                          value={round.mode || 'Online'}
+                          onChange={(e) => updateRound(index, 'mode', e.target.value)}
+                          aria-label={`Round ${index + 1} mode`}
+                          className="px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-xs"
+                        >
+                          <option value="Online">Online</option>
+                          <option value="In-Person">In-Person</option>
+                          <option value="Hybrid">Hybrid</option>
+                        </select>
+                        <select
+                          value={round.status || 'PLANNED'}
+                          onChange={(e) => updateRound(index, 'status', e.target.value)}
+                          aria-label={`Round ${index + 1} status`}
+                          className="px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-xs"
+                        >
+                          {ROUND_STATUSES.map((status) => (
+                            <option key={status} value={status}>{status.replaceAll('_', ' ')}</option>
+                          ))}
+                        </select>
+                        <input
+                          type="datetime-local"
+                          value={round.scheduledDate || ''}
+                          onChange={(e) => updateRound(index, 'scheduledDate', e.target.value)}
+                          aria-label={`Round ${index + 1} schedule`}
+                          className="px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-xs"
+                        />
+                        <input
+                          type="number"
+                          min="1"
+                          step="1"
+                          value={round.durationMinutes ?? ''}
+                          onChange={(e) => updateRound(index, 'durationMinutes', e.target.value)}
+                          placeholder="Duration (minutes)"
+                          aria-label={`Round ${index + 1} duration in minutes`}
+                          className="px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-xs"
+                        />
+                        <input
+                          type="text"
+                          value={round.venueOrLink || ''}
+                          onChange={(e) => updateRound(index, 'venueOrLink', e.target.value)}
+                          placeholder="Venue or meeting link"
+                          aria-label={`Round ${index + 1} venue or meeting link`}
+                          className="lg:col-span-2 px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-xs"
+                        />
+                      </div>
+                      <textarea
+                        rows={2}
+                        value={round.description || ''}
+                        onChange={(e) => updateRound(index, 'description', e.target.value)}
+                        placeholder="Instructions or round details"
+                        aria-label={`Round ${index + 1} description`}
+                        className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-xs focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               {/* Deadlines and Status */}
               <div className="space-y-4 bg-slate-800/40 p-4 rounded-xl border border-slate-800">
-                <h4 className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">4. Timelines &amp; Publishing Status</h4>
+                <h4 className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">5. Timelines &amp; Publishing Status</h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-medium text-slate-400 mb-1">Application Deadline *</label>
@@ -738,4 +974,3 @@ export default function RecruiterJobManagement() {
     </div>
   );
 }
-

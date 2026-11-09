@@ -77,6 +77,8 @@ The Authentication & Authorization Service (`auth-service`) manages user registr
   - `400 Bad Request`: Validation failure (weak password, invalid email format, invalid student ID).
   - `409 Conflict`: Account with this email or student ID already exists.
 
+Student IDs are normalized to lowercase and must match the RGUKT format `O` followed by six digits. The Auth Service enforces uniqueness at validation and database-index levels; the Student Service links each profile to the authenticated user and the same validated college ID.
+
 ---
 
 ### B. User Login
@@ -196,6 +198,15 @@ The Authentication & Authorization Service (`auth-service`) manages user registr
     "status": "SUSPENDED"
   }
   ```
+
+---
+
+### G. Internal Active Recruiter Lookup
+`GET /api/v1/auth/internal/recruiters/:email`
+
+- **Authentication**: `x-service-key` header (service-to-service only)
+- **Purpose**: Confirms that the email belongs to an active `RECRUITER` account before linking it to a company.
+- **Response**: Returns the account ID, email, name, role, and status. Passwords and tokens are never returned.
 - **Allowed Statuses**: `ACTIVE`, `INACTIVE`, `SUSPENDED`, `PENDING_APPROVAL`
 - **Response `200 OK`**:
   ```json
@@ -234,4 +245,3 @@ The Authentication & Authorization Service (`auth-service`) manages user registr
     }
   }
   ```
-

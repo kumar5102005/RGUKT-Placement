@@ -34,22 +34,21 @@ app.get('/health', (req, res) => {
       status: dbStatus,
       name: 'rgukt_drive_db',
     },
-    phase: 'Phase 7 - Placement Drive Management Service',
   });
 });
 
 // ─── API Routes ───────────────────────────────────────────────────────────────
-// Placement Drive Management routes (Phase 7)
+// Placement drive management routes.
 app.use('/api/v1/drives', driveRoutes);
 app.use('/placement-drives', driveRoutes);
 app.use('/', driveRoutes);
 
-// Job Management routes (Phase 6)
+// Job management routes.
 app.use('/api/v1/jobs', jobRoutes);
 app.use('/jobs', jobRoutes);
 app.use('/api/v1/drives/jobs', jobRoutes);
 
-// Company & Drive routes (Phase 5)
+// Company and recruiter routes.
 app.use('/api/v1/drives', companyRoutes);
 app.use('/', companyRoutes);
 

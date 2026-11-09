@@ -1,9 +1,7 @@
 import jwt from 'jsonwebtoken';
 
-const JWT_SECRET =
-  process.env.JWT_SECRET || 'rgukt_super_secure_jwt_secret_token_2026_dev_key';
-const SERVICE_API_KEY =
-  process.env.SERVICE_API_KEY || 'rgukt_placement_internal_secret_key_2026';
+const JWT_SECRET = process.env.JWT_SECRET;
+const SERVICE_API_KEY = process.env.SERVICE_API_KEY;
 
 /**
  * Authenticates requests via Bearer JWT.
@@ -65,7 +63,7 @@ export function authorize(...roles) {
  */
 export function requireInternalServiceKey(req, res, next) {
   const key = req.headers['x-service-key'];
-  if (!key || key !== SERVICE_API_KEY) {
+  if (!SERVICE_API_KEY || !key || key !== SERVICE_API_KEY) {
     return res.status(403).json({
       success: false,
       error: { code: 'INVALID_SERVICE_KEY', message: 'Internal service key is invalid' },
@@ -73,4 +71,3 @@ export function requireInternalServiceKey(req, res, next) {
   }
   next();
 }
-

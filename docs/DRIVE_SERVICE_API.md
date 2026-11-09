@@ -4,7 +4,6 @@
 **Base URL**: `http://localhost:8080/api/v1/drives/placement-drives`  
 **Direct Port**: `4003`  
 **Database**: `rgukt_drive_db` (Collections: `placement_drives`, `drive_registrations`)  
-**Phase**: Phase 7 — Placement Drive Management
 
 ---
 
@@ -233,4 +232,3 @@ Returns list of all drives the authenticated student is registered for, includin
 | `TECHNICAL_INTERVIEW` | Engineering domain, system architecture & problem solving | Virtual meeting or campus panel |
 | `HR_INTERVIEW` | Behavioral fitment, communication & document verification | In-person interview |
 | `GROUP_DISCUSSION` | Communication and collaborative problem analysis | In-person or virtual panel |
-

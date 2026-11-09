@@ -37,7 +37,7 @@ async function checkUrl(target) {
 
 async function run() {
   console.log("==================================================================");
-  console.log("RGUKT Ongole Placement Hub - Phase 2 Health Verification");
+  console.log("RGUKT Ongole Placement Hub - Health Verification");
   console.log("==================================================================");
   for (const t of targets) {
     const res = await checkUrl(t);
@@ -50,4 +50,3 @@ async function run() {
 }
 
 run();
-

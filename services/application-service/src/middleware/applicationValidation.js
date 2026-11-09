@@ -16,16 +16,10 @@ function sendValidationError(res, details) {
  */
 export function validateApplicationSubmission(req, res, next) {
   const errors = [];
-  const { jobId, studentData } = req.body;
+  const { jobId } = req.body;
 
   if (!jobId) {
     errors.push({ field: 'jobId', message: 'Job ID is required.' });
-  }
-
-  if (studentData) {
-    if (studentData.btechCgpa !== undefined && (isNaN(studentData.btechCgpa) || studentData.btechCgpa < 0 || studentData.btechCgpa > 10)) {
-      errors.push({ field: 'studentData.btechCgpa', message: 'B.Tech CGPA must be between 0 and 10.' });
-    }
   }
 
   if (errors.length > 0) {
@@ -87,4 +81,3 @@ export function validateInterviewSchedule(req, res, next) {
 
   next();
 }
-

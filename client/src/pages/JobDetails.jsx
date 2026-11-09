@@ -24,11 +24,14 @@ export default function JobDetails() {
   // Eligibility evaluation state
   const [evaluating, setEvaluating] = useState(false);
   const [eligibilityResult, setEligibilityResult] = useState(null);
+  const [eligibilityError, setEligibilityError] = useState('');
   const [rawStudentData, setRawStudentData] = useState(null);
 
   // Application submission state
   const [applying, setApplying] = useState(false);
   const [hasApplied, setHasApplied] = useState(false);
+  const [appliedApplication, setAppliedApplication] = useState(null);
+  const [applicationsError, setApplicationsError] = useState('');
   const [applicationSuccess, setApplicationSuccess] = useState('');
   const [coverLetter, setCoverLetter] = useState('');
   const [showApplyModal, setShowApplyModal] = useState(false);
@@ -62,52 +65,52 @@ export default function JobDetails() {
   const evaluateStudent = useCallback(async () => {
     if (user?.role !== 'STUDENT') return;
     setEvaluating(true);
+    setEligibilityError('');
+    setApplicationsError('');
     try {
-      // 1. Fetch own student profile
       const studentRes = await apiFetch(`${STUDENT_API_BASE}/profile`);
-      if (!studentRes.ok) return;
       const studentJson = await studentRes.json();
-      const student = studentJson.data?.student;
+      if (!studentRes.ok) {
+        setEligibilityError(studentJson.error?.message || 'Unable to load your student profile.');
+        return;
+      }
+      const student = studentJson.data?.profile;
 
-      if (!student) return;
+      if (!student) {
+        setEligibilityError('Complete your student profile before checking eligibility.');
+        return;
+      }
       setRawStudentData(student);
 
-      // 2. Check if already applied
-      apiFetch(`${APPLICATIONS_API}/my`)
-        .then((res) => res.json())
-        .then((data) => {
-          const applied = data.data?.applications?.some((a) => a.jobId === id || a.jobId?._id === id);
-          if (applied) setHasApplied(true);
-        })
-        .catch(() => { });
+      const applicationsRes = await apiFetch(`${APPLICATIONS_API}/my`);
+      const applicationsData = await applicationsRes.json();
+      if (applicationsRes.ok) {
+        const application = applicationsData.data?.applications?.find(
+          (item) => String(item.jobId?._id || item.jobId) === String(id)
+        );
+        setAppliedApplication(application || null);
+        setHasApplied(Boolean(application));
+      } else {
+        setApplicationsError(applicationsData.error?.message || 'Unable to load your application status.');
+      }
 
-      // 3. Run eligibility check endpoint
       const checkRes = await apiFetch(`${API_BASE}/${id}/check-eligibility`, {
         method: 'POST',
-        body: JSON.stringify({
-          studentData: {
-            btechCgpa: student.academics?.btechCgpa || 0,
-            branch: student.branch || '',
-            batchYear: student.batchYear || 0,
-            activeBacklogs: student.academics?.activeBacklogs || 0,
-            totalBacklogsHistory: student.academics?.totalBacklogsHistory || 0,
-            tenthPercentage: student.academics?.tenthPercentage || 0,
-            pucCgpa: student.academics?.pucCgpa || 0,
-            skills: student.skills?.map((s) => s.name) || [],
-          },
-        }),
+        body: JSON.stringify({}),
       });
 
       const checkJson = await checkRes.json();
       if (checkRes.ok) {
         setEligibilityResult(checkJson.data?.evaluation);
+      } else {
+        setEligibilityError(checkJson.error?.message || 'Unable to evaluate eligibility.');
       }
-    } catch {
-      // Non-blocking error
+    } catch (requestError) {
+      setEligibilityError(requestError.message || 'Network error while checking eligibility.');
     } finally {
       setEvaluating(false);
     }
-  }, [id, user, headers]);
+  }, [id, user, apiFetch]);
 
   useEffect(() => {
     fetchJobDetails();
@@ -120,30 +123,15 @@ export default function JobDetails() {
   }, [job, evaluateStudent]);
 
   async function handleApplyForJob() {
-    if (!rawStudentData) {
-      alert('Please fill out your Student Profile first.');
+    if (!rawStudentData || eligibilityResult?.status !== 'ELIGIBLE') {
+      alert('Complete the required academic fields in your student profile before applying.');
       return;
     }
     setApplying(true);
     try {
       const payload = {
         jobId: job._id,
-        jobTitle: job.title,
-        companyId: job.companyId,
-        companyName: job.companyName,
-        studentData: {
-          studentId: rawStudentData.studentId || user?.studentId || '',
-          studentName: rawStudentData.personalInfo?.fullName || user?.fullName || 'Candidate',
-          branch: rawStudentData.branch || 'CSE',
-          btechCgpa: rawStudentData.academics?.btechCgpa || 0,
-          activeBacklogs: rawStudentData.academics?.activeBacklogs || 0,
-          batchYear: rawStudentData.batchYear || 2026,
-          resumeUrl: rawStudentData.resumeUrl || '',
-          skills: rawStudentData.skills?.map((s) => s.name) || [],
-        },
         coverLetter,
-        eligibilityRules: job.eligibility || {},
-        applicationDeadline: job.applicationDeadline,
       };
 
       const res = await fetch(APPLICATIONS_API, {
@@ -154,6 +142,7 @@ export default function JobDetails() {
 
       const data = await res.json();
       if (res.ok) {
+        setAppliedApplication(data.data?.application || null);
         setHasApplied(true);
         setApplicationSuccess('Your application has been successfully submitted to ' + job.companyName + '!');
       } else {
@@ -192,6 +181,10 @@ export default function JobDetails() {
   }
 
   const isExpired = new Date(job.applicationDeadline).getTime() < Date.now();
+  const displayedRounds = appliedApplication?.recruitmentRounds?.length
+    ? appliedApplication.recruitmentRounds
+    : job.selectionRounds;
+  const canSeeRoundDetails = user?.role !== 'STUDENT' || Boolean(appliedApplication);
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
@@ -294,98 +287,86 @@ export default function JobDetails() {
 
       {/* Student Real-Time Eligibility Card */}
       {user?.role === 'STUDENT' && (
-        <div className={`p-6 rounded-2xl border transition ${evaluating
-          ? 'bg-slate-800/60 border-slate-700'
-          : eligibilityResult?.isEligible
-            ? 'bg-emerald-950/30 border-emerald-500/40'
-            : 'bg-rose-950/20 border-rose-500/30'
-          }`}>
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-            <div className="flex items-center gap-3">
-              {evaluating ? (
-                <Loader2 className="w-6 h-6 animate-spin text-emerald-400" />
-              ) : eligibilityResult?.isEligible ? (
-                <CheckCircle2 className="w-6 h-6 text-emerald-400 shrink-0" />
-              ) : (
-                <XCircle className="w-6 h-6 text-rose-400 shrink-0" />
-              )}
-              <div>
-                <h3 className="text-base font-semibold text-white">
-                  {evaluating
-                    ? 'Auditing Academic Eligibility...'
-                    : eligibilityResult?.isEligible
-                      ? 'You Are Eligible for This Placement Drive!'
-                      : 'You Currently Do Not Meet One or More Eligibility Criteria'}
-                </h3>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Automated verification based on your B.Tech records, active backlogs, and academic batch.
-                </p>
-              </div>
+        <>
+          {eligibilityError && (
+            <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-sm">
+              {eligibilityError}
             </div>
+          )}
+          {eligibilityResult && (
+            <div className={`p-6 rounded-2xl border transition ${
+              eligibilityResult.status === 'ELIGIBLE'
+                ? 'bg-emerald-950/30 border-emerald-500/40'
+                : eligibilityResult.status === 'INSUFFICIENT_DATA'
+                  ? 'bg-amber-950/20 border-amber-500/30'
+                  : 'bg-rose-950/20 border-rose-500/30'
+            }`}>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+                <div className="flex items-center gap-3">
+                  {evaluating ? (
+                    <Loader2 className="w-6 h-6 animate-spin text-emerald-400" />
+                  ) : eligibilityResult.status === 'ELIGIBLE' ? (
+                    <CheckCircle2 className="w-6 h-6 text-emerald-400 shrink-0" />
+                  ) : eligibilityResult.status === 'INSUFFICIENT_DATA' ? (
+                    <AlertCircle className="w-6 h-6 text-amber-400 shrink-0" />
+                  ) : (
+                    <XCircle className="w-6 h-6 text-rose-400 shrink-0" />
+                  )}
+                  <div>
+                    <h3 className="text-base font-semibold text-white">
+                      {evaluating
+                        ? 'Checking academic eligibility...'
+                        : eligibilityResult.status === 'ELIGIBLE'
+                          ? 'You are eligible for this job.'
+                          : eligibilityResult.status === 'INSUFFICIENT_DATA'
+                            ? 'Complete the missing profile information to check eligibility.'
+                            : 'You do not meet one or more eligibility criteria.'}
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Eligibility is calculated from your verified student-service profile.
+                    </p>
+                  </div>
+                </div>
 
-            {eligibilityResult && (
-              <span className={`px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider ${eligibilityResult.isEligible
-                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                <span className={`px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider ${
+                  eligibilityResult.status === 'ELIGIBLE'
+                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                    : eligibilityResult.status === 'INSUFFICIENT_DATA'
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                      : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
                 }`}>
-                {eligibilityResult.isEligible ? 'Eligible' : 'Ineligible'}
-              </span>
-            )}
-          </div>
-
-          {/* Breakdown checklist */}
-          {eligibilityResult?.criteriaBreakdown && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3 border-t border-slate-700/60 text-xs">
-              <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
-                <span className="text-slate-400 block mb-1">CGPA Check</span>
-                <span className={`font-semibold flex items-center gap-1 ${eligibilityResult.criteriaBreakdown.cgpa?.passed ? 'text-emerald-400' : 'text-rose-400'
-                  }`}>
-                  {eligibilityResult.criteriaBreakdown.cgpa?.passed ? '✓' : '✗'}{' '}
-                  {eligibilityResult.criteriaBreakdown.cgpa?.actual} / {eligibilityResult.criteriaBreakdown.cgpa?.required} Min
+                  {eligibilityResult.status.replaceAll('_', ' ')}
                 </span>
               </div>
 
-              <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
-                <span className="text-slate-400 block mb-1">Branch Check</span>
-                <span className={`font-semibold flex items-center gap-1 ${eligibilityResult.criteriaBreakdown.branch?.passed ? 'text-emerald-400' : 'text-rose-400'
-                  }`}>
-                  {eligibilityResult.criteriaBreakdown.branch?.passed ? '✓' : '✗'}{' '}
-                  {eligibilityResult.criteriaBreakdown.branch?.actual || 'N/A'}
-                </span>
-              </div>
-
-              <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
-                <span className="text-slate-400 block mb-1">Active Backlogs</span>
-                <span className={`font-semibold flex items-center gap-1 ${eligibilityResult.criteriaBreakdown.activeBacklogs?.passed ? 'text-emerald-400' : 'text-rose-400'
-                  }`}>
-                  {eligibilityResult.criteriaBreakdown.activeBacklogs?.passed ? '✓' : '✗'}{' '}
-                  {eligibilityResult.criteriaBreakdown.activeBacklogs?.actual} (Max {eligibilityResult.criteriaBreakdown.activeBacklogs?.requiredMax})
-                </span>
-              </div>
-
-              <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
-                <span className="text-slate-400 block mb-1">Graduation Batch</span>
-                <span className={`font-semibold flex items-center gap-1 ${eligibilityResult.criteriaBreakdown.batchYear?.passed ? 'text-emerald-400' : 'text-rose-400'
-                  }`}>
-                  {eligibilityResult.criteriaBreakdown.batchYear?.passed ? '✓' : '✗'}{' '}
-                  {eligibilityResult.criteriaBreakdown.batchYear?.actual || 'N/A'}
-                </span>
-              </div>
+              {Object.keys(eligibilityResult.criteria || {}).length > 0 && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-3 border-t border-slate-700/60 text-xs">
+                  {Object.entries(eligibilityResult.criteria).map(([key, criterion]) => (
+                    <div key={key} className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
+                      <span className="text-slate-400 block mb-1">{key.replace(/([A-Z])/g, ' $1')}</span>
+                      <span className={`font-semibold ${
+                        criterion.status === 'PASS'
+                          ? 'text-emerald-400'
+                          : criterion.status === 'FAIL'
+                            ? 'text-rose-400'
+                            : 'text-amber-300'
+                      }`}>
+                        {criterion.actual === null || criterion.actual === undefined
+                          ? 'Not provided'
+                          : Array.isArray(criterion.actual)
+                            ? criterion.actual.join(', ')
+                            : String(criterion.actual)}
+                        {criterion.required !== null && criterion.required !== undefined &&
+                          ` / ${Array.isArray(criterion.required) ? criterion.required.join(', ') : criterion.required}`}
+                      </span>
+                      <p className="text-slate-500 mt-1">{criterion.explanation}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
-
-          {/* Reason notes */}
-          {eligibilityResult?.reasons?.length > 0 && (
-            <div className="mt-3 p-3 bg-rose-500/10 rounded-lg border border-rose-500/20 text-xs text-rose-300 space-y-1">
-              <p className="font-semibold">Cutoff Discrepancies:</p>
-              {eligibilityResult.reasons.map((r, idx) => (
-                <p key={idx} className="flex items-center gap-1.5">
-                  <span>•</span> {r}
-                </p>
-              ))}
-            </div>
-          )}
-        </div>
+        </>
       )}
 
       {/* Grid: Details & Eligibility Specification */}
@@ -459,21 +440,29 @@ export default function JobDetails() {
           </div>
 
           {/* Selection Rounds Timeline */}
-          {job.selectionRounds?.length > 0 && (
+          {displayedRounds?.length > 0 && (
             <div className="bg-slate-800/60 border border-slate-700 rounded-2xl p-6 space-y-4">
               <h3 className="text-lg font-semibold text-white flex items-center gap-2">
                 <Award className="w-5 h-5 text-emerald-400" /> Selection Process &amp; Rounds
               </h3>
+              {applicationsError && user?.role === 'STUDENT' && (
+                <p className="text-xs text-amber-300">{applicationsError}</p>
+              )}
+              {user?.role === 'STUDENT' && !appliedApplication && (
+                <p className="text-xs text-slate-400">
+                  Detailed schedules and venues are available to applicants after registration.
+                </p>
+              )}
               <div className="space-y-3">
-                {job.selectionRounds.map((round, idx) => (
+                {displayedRounds.map((round, idx) => (
                   <div
-                    key={idx}
+                    key={`${round.roundNumber || idx}-${round.name}`}
                     className="flex items-start gap-4 p-3.5 bg-slate-900/60 rounded-xl border border-slate-800"
                   >
                     <div className="w-8 h-8 rounded-lg bg-emerald-600/20 border border-emerald-500/30 flex items-center justify-center font-bold text-emerald-400 text-sm shrink-0">
                       {round.roundNumber || idx + 1}
                     </div>
-                    <div>
+                    <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <h4 className="font-semibold text-white text-sm">{round.name}</h4>
                         <span className="text-[11px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
@@ -482,6 +471,31 @@ export default function JobDetails() {
                       </div>
                       {round.description && (
                         <p className="text-xs text-slate-400 mt-1">{round.description}</p>
+                      )}
+                      {canSeeRoundDetails && (
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-slate-400">
+                          {round.scheduledDate && (
+                            <span>{new Date(round.scheduledDate).toLocaleString()}</span>
+                          )}
+                          {round.durationMinutes && <span>{round.durationMinutes} minutes</span>}
+                          {round.venueOrLink && (
+                            round.venueOrLink.startsWith('http') ? (
+                              <a
+                                href={round.venueOrLink}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-emerald-400 hover:underline"
+                              >
+                                Join / venue details
+                              </a>
+                            ) : <span>{round.venueOrLink}</span>
+                          )}
+                          {round.status && (
+                            <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
+                              {round.status.replace(/_/g, ' ')}
+                            </span>
+                          )}
+                        </div>
                       )}
                     </div>
                   </div>
@@ -619,4 +633,3 @@ export default function JobDetails() {
     </div>
   );
 }
-

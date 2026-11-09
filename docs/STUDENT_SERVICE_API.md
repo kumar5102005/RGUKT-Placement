@@ -214,7 +214,7 @@ The service computes a dynamic completion score (0 - 100%) every time a profile 
 `GET /api/v1/students/internal/:id`
 
 - **Access**: Internal Microservice Call (Requires `x-service-key`)
-- **Description**: Synchronous query executed by `application-service` during drive application submission to verify eligibility without cross-database access.
+- **Description**: Returns the student-service-owned profile fields used by job and placement-drive eligibility evaluation. Academic values are omitted when not provided; missing values are never replaced with fabricated defaults.
 - **Response `200 OK`**:
   ```json
   {
@@ -226,12 +226,17 @@ The service computes a dynamic completion score (0 - 100%) every time a profile 
       "email": "o180555@rguktong.ac.in",
       "branch": "CSE",
       "batchYear": 2026,
+      "tenthPercentage": 88.5,
+      "pucCgpa": 9.1,
       "btechCgpa": 8.85,
       "activeBacklogs": 0,
+      "backlogHistory": 1,
+      "gender": "FEMALE",
+      "technicalSkills": ["Java", "SQL"],
+      "nonTechnicalSkills": ["Communication"],
       "resumeUrl": "/uploads/resumes/O180555-12345.pdf",
       "verificationStatus": "VERIFIED",
       "placementStatus": "NOT_PLACED"
     }
   }
   ```
-

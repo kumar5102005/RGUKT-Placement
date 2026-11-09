@@ -2,7 +2,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "node:crypto";
 
-const JWT_SECRET = process.env.JWT_SECRET || "rgukt_super_secure_jwt_secret_token_2026_dev_key";
+const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "2h";
 const REFRESH_TOKEN_DAYS = 7;
 
@@ -76,4 +76,3 @@ export function verifyAccessToken(token) {
     return null;
   }
 }
-

@@ -2,9 +2,34 @@ import mongoose from 'mongoose';
 import PlacementDrive from '../models/PlacementDrive.js';
 import DriveRegistration from '../models/DriveRegistration.js';
 import Company from '../models/Company.js';
+import { evaluateJobEligibility } from '../utils/eligibilityEvaluator.js';
+
+const STUDENT_SERVICE_URL = process.env.STUDENT_SERVICE_URL || 'http://student-service:4002';
+const SERVICE_API_KEY = process.env.SERVICE_API_KEY;
 
 function getUserId(user) {
   return user?.userId || user?.id || user?._id;
+}
+
+async function getStudentData(studentUserId) {
+  if (!SERVICE_API_KEY) {
+    const error = new Error('SERVICE_API_KEY is not configured for student profile lookup.');
+    error.statusCode = 503;
+    error.code = 'SERVICE_CONFIGURATION_ERROR';
+    throw error;
+  }
+  const response = await fetch(
+    `${STUDENT_SERVICE_URL}/api/v1/students/internal/${encodeURIComponent(studentUserId)}`,
+    { headers: { 'x-service-key': SERVICE_API_KEY } }
+  );
+  const result = await response.json();
+  if (!response.ok || !result.success || !result.data) {
+    const error = new Error(result.error?.message || 'Unable to retrieve the student profile.');
+    error.statusCode = response.status || 502;
+    error.code = result.error?.code || 'STUDENT_SERVICE_ERROR';
+    throw error;
+  }
+  return result.data;
 }
 
 // ─── Placement Drive Management (Admin & Recruiter) ─────────────────────────
@@ -437,41 +462,33 @@ export async function registerStudentForDrive(req, res) {
     }
 
     // 4. Academic Eligibility Validation
-    const studentData = req.body.studentData || {};
-    const studentBranch = (studentData.branch || req.user.branch || '').toUpperCase();
-    const studentCgpa = Number(studentData.btechCgpa || studentData.cgpa || 0);
-    const studentActiveBacklogs = Number(studentData.activeBacklogs || 0);
-    const studentBatch = Number(studentData.batchYear || req.user.batchYear || 2026);
-
-    const criteria = drive.eligibilityCriteria;
-    const ineligibilityReasons = [];
-
-    // CGPA check
-    if (criteria.minCgpa && studentCgpa < criteria.minCgpa) {
-      ineligibilityReasons.push(`Your B.Tech CGPA (${studentCgpa}) is below required minimum of ${criteria.minCgpa}.`);
-    }
-
-    // Branch check
-    if (criteria.allowedBranches?.length > 0 && !criteria.allowedBranches.includes(studentBranch)) {
-      ineligibilityReasons.push(
-        `Branch '${studentBranch || 'Unspecified'}' is not eligible. Allowed branches: ${criteria.allowedBranches.join(', ')}.`
-      );
-    }
-
-    // Active backlogs check
-    if (criteria.maxActiveBacklogs !== undefined && studentActiveBacklogs > criteria.maxActiveBacklogs) {
-      ineligibilityReasons.push(
-        `Your active backlogs (${studentActiveBacklogs}) exceed maximum allowed threshold of ${criteria.maxActiveBacklogs}.`
-      );
-    }
-
-    if (ineligibilityReasons.length > 0) {
+    const studentData = await getStudentData(studentUserId);
+    const criteria = drive.eligibilityCriteria.toObject
+      ? drive.eligibilityCriteria.toObject()
+      : drive.eligibilityCriteria;
+    const evaluation = evaluateJobEligibility(
+      {
+        ...criteria,
+        minTwelfthPucCgpa: criteria.minPucCgpa,
+        genderPreference: criteria.eligibleGenders === 'FEMALE'
+          ? 'Female Only'
+          : criteria.eligibleGenders === 'MALE'
+            ? 'Male Only'
+            : 'All',
+        eligibleBatchYears: [drive.batchYear],
+      },
+      studentData
+    );
+    if (evaluation.status !== 'ELIGIBLE') {
       return res.status(422).json({
         success: false,
         error: {
-          code: 'INELIGIBLE_FOR_DRIVE',
-          message: 'You do not meet the academic eligibility criteria for this placement drive.',
-          details: ineligibilityReasons,
+          code: evaluation.status === 'INSUFFICIENT_DATA' ? 'INSUFFICIENT_ELIGIBILITY_DATA' : 'INELIGIBLE_FOR_DRIVE',
+          message: evaluation.status === 'INSUFFICIENT_DATA'
+            ? 'Complete the required academic information before registering for this placement drive.'
+            : 'You do not meet the academic eligibility criteria for this placement drive.',
+          details: evaluation.reasons,
+          data: { evaluation },
         },
       });
     }
@@ -490,13 +507,13 @@ export async function registerStudentForDrive(req, res) {
       driveTitle: drive.title,
       companyName: drive.companyName,
       studentUserId,
-      studentId: (studentData.studentId || req.user.studentId || req.user.email?.split('@')[0] || '').toLowerCase().trim(),
-      studentName: studentData.studentName || req.user.fullName || 'Student',
-      studentEmail: req.user.email,
-      branch: studentBranch,
-      btechCgpa: studentCgpa,
-      activeBacklogs: studentActiveBacklogs,
-      batchYear: studentBatch,
+      studentId: studentData.studentId,
+      studentName: studentData.fullName,
+      studentEmail: studentData.email,
+      branch: studentData.branch,
+      btechCgpa: Number(studentData.btechCgpa),
+      activeBacklogs: Number(studentData.activeBacklogs),
+      batchYear: Number(studentData.batchYear),
       resumeUrl: studentData.resumeUrl || '',
       status: 'REGISTERED',
       roundProgress,
@@ -545,9 +562,9 @@ export async function getMyDriveRegistrations(req, res) {
       data: { registrations },
     });
   } catch (err) {
-    return res.status(500).json({
+    return res.status(err.statusCode || 500).json({
       success: false,
-      error: { code: 'INTERNAL_ERROR', message: err.message },
+      error: { code: err.code || 'INTERNAL_ERROR', message: err.message },
     });
   }
 }
@@ -626,4 +643,3 @@ export async function updateRegistrationStatus(req, res) {
     });
   }
 }
-

@@ -3,19 +3,122 @@ import Job from '../models/Job.js';
 import Company from '../models/Company.js';
 import { evaluateJobEligibility } from '../utils/eligibilityEvaluator.js';
 
+const STUDENT_SERVICE_URL = process.env.STUDENT_SERVICE_URL || 'http://student-service:4002';
+const APPLICATION_SERVICE_URL = process.env.APPLICATION_SERVICE_URL || 'http://application-service:4004';
+const SERVICE_API_KEY = process.env.SERVICE_API_KEY;
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function getUserId(user) {
   return user?.userId || user?.id || user?._id;
 }
 
+function hideStudentRoundDetails(job) {
+  return {
+    ...job,
+    selectionRounds: (job.selectionRounds || []).map((round) => ({
+      roundNumber: round.roundNumber,
+      name: round.name,
+      description: round.description,
+      mode: round.mode,
+    })),
+  };
+}
+
 async function findRecruiterCompany(userId) {
   return await Company.findOne({
     $or: [
       { registeredBy: userId },
-      { 'recruiters.userId': userId },
+      { recruiters: { $elemMatch: { userId, status: 'ACTIVE' } } },
     ],
   });
+}
+
+async function getStudentData(studentUserId) {
+  if (!studentUserId) {
+    const error = new Error('Student account ID is required for eligibility evaluation.');
+    error.statusCode = 400;
+    error.code = 'STUDENT_ACCOUNT_REQUIRED';
+    throw error;
+  }
+  if (!SERVICE_API_KEY) {
+    const error = new Error('SERVICE_API_KEY is not configured for student profile lookup.');
+    error.statusCode = 503;
+    error.code = 'SERVICE_CONFIGURATION_ERROR';
+    throw error;
+  }
+
+  const response = await fetch(
+    `${STUDENT_SERVICE_URL}/api/v1/students/internal/${encodeURIComponent(studentUserId)}`,
+    { headers: { 'x-service-key': SERVICE_API_KEY } }
+  );
+  const result = await response.json();
+  if (!response.ok || !result.success || !result.data) {
+    const error = new Error(result.error?.message || 'Unable to retrieve the student profile.');
+    error.statusCode = response.status || 502;
+    error.code = result.error?.code || 'STUDENT_SERVICE_ERROR';
+    throw error;
+  }
+  return result.data;
+}
+
+async function getJobEligibility(jobId, studentUserId) {
+  const job = await Job.findById(jobId).lean();
+  if (!job) return { error: { status: 404, code: 'JOB_NOT_FOUND', message: 'Job posting not found.' } };
+
+  const student = await getStudentData(studentUserId);
+  const evaluation = evaluateJobEligibility(job.eligibility, student);
+  return {
+    job,
+    student,
+    evaluation,
+  };
+}
+
+function jobRoundSnapshot(rounds) {
+  return rounds.map((round) => ({
+    roundNumber: round.roundNumber,
+    name: round.name,
+    description: round.description || '',
+    mode: round.mode,
+    scheduledDate: round.scheduledDate || null,
+    durationMinutes: round.durationMinutes ?? null,
+    venueOrLink: round.venueOrLink || '',
+    status: round.status || 'PLANNED',
+  }));
+}
+
+async function syncRecruitmentRounds(job) {
+  if (!SERVICE_API_KEY) {
+    const error = new Error('SERVICE_API_KEY is not configured for application synchronization.');
+    error.statusCode = 503;
+    error.code = 'SERVICE_CONFIGURATION_ERROR';
+    throw error;
+  }
+
+  const response = await fetch(
+    `${APPLICATION_SERVICE_URL}/api/v1/applications/internal/jobs/${job._id}/recruitment-rounds`,
+    {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-service-key': SERVICE_API_KEY,
+      },
+      body: JSON.stringify({
+        jobId: job._id,
+        jobTitle: job.title,
+        companyName: job.companyName,
+        rounds: jobRoundSnapshot(job.selectionRounds || []),
+      }),
+    }
+  );
+  const result = await response.json();
+  if (!response.ok || !result.success) {
+    const error = new Error(result.error?.message || 'Unable to synchronize recruitment rounds with applications.');
+    error.statusCode = response.status || 502;
+    error.code = result.error?.code || 'APPLICATION_SYNC_FAILED';
+    throw error;
+  }
 }
 
 // ─── Controllers ────────────────────────────────────────────────────────────
@@ -102,7 +205,7 @@ export async function createJob(req, res) {
       preferredSkills: Array.isArray(preferredSkills) ? preferredSkills : [],
       salary: salary || {},
       eligibility: eligibility || {},
-      selectionRounds: Array.isArray(selectionRounds) && selectionRounds.length > 0 ? selectionRounds : undefined,
+      selectionRounds: Array.isArray(selectionRounds) ? selectionRounds : undefined,
       applicationDeadline: new Date(applicationDeadline),
       driveDate: driveDate ? new Date(driveDate) : null,
       status: status || 'ACTIVE',
@@ -235,7 +338,7 @@ export async function getJobs(req, res) {
     return res.status(200).json({
       success: true,
       data: {
-        jobs,
+        jobs: req.user?.role === 'STUDENT' ? jobs.map(hideStudentRoundDetails) : jobs,
         pagination: {
           total,
           page: pageNum,
@@ -277,7 +380,10 @@ export async function getRecruiterJobs(req, res) {
 
     return res.status(200).json({
       success: true,
-      data: { jobs, company },
+      data: {
+        jobs: req.user?.role === 'STUDENT' ? jobs.map(hideStudentRoundDetails) : jobs,
+        company,
+      },
     });
   } catch (err) {
     return res.status(500).json({
@@ -313,7 +419,9 @@ export async function getJobById(req, res) {
 
     return res.status(200).json({
       success: true,
-      data: { job },
+      data: {
+        job: req.user?.role === 'STUDENT' ? hideStudentRoundDetails(job) : job,
+      },
     });
   } catch (err) {
     if (err.name === 'CastError') {
@@ -358,6 +466,7 @@ export async function updateJob(req, res) {
       }
     }
 
+    const previousRounds = JSON.stringify(jobRoundSnapshot(job.selectionRounds || []));
     const updatableFields = [
       'title',
       'roleCategory',
@@ -386,7 +495,30 @@ export async function updateJob(req, res) {
       }
     }
 
+    const roundsChanged = req.body.selectionRounds !== undefined &&
+      JSON.stringify(jobRoundSnapshot(job.selectionRounds || [])) !== previousRounds;
+    const shouldSyncRounds = roundsChanged || job.roundsSyncPending;
+    if (shouldSyncRounds) {
+      job.roundsSyncPending = true;
+    }
+
     await job.save();
+
+    if (shouldSyncRounds) {
+      try {
+        await syncRecruitmentRounds(job);
+        job.roundsSyncPending = false;
+        await job.save();
+      } catch (syncError) {
+        return res.status(syncError.statusCode || 502).json({
+          success: false,
+          error: {
+            code: 'RECRUITMENT_ROUND_SYNC_FAILED',
+            message: `The job posting was saved, but its recruitment rounds could not be synchronized: ${syncError.message}`,
+          },
+        });
+      }
+    }
 
     return res.status(200).json({
       success: true,
@@ -520,32 +652,85 @@ export async function updateJobStatus(req, res) {
  */
 export async function checkEligibility(req, res) {
   try {
-    const job = await Job.findById(req.params.id).lean();
-    if (!job) {
+    const result = await getJobEligibility(req.params.id, getUserId(req.user));
+    if (result.error) {
       return res.status(404).json({
         success: false,
-        error: { code: 'JOB_NOT_FOUND', message: 'Job posting not found.' },
+        error: result.error,
       });
     }
-
-    const studentData = req.body.studentData || req.body;
-
-    const evaluation = evaluateJobEligibility(job.eligibility, studentData);
 
     return res.status(200).json({
       success: true,
       data: {
-        jobId: job._id,
-        jobTitle: job.title,
-        companyName: job.companyName,
-        eligibilityRules: job.eligibility,
-        evaluation,
+        jobId: result.job._id,
+        jobTitle: result.job.title,
+        companyName: result.job.companyName,
+        eligibilityRules: result.job.eligibility,
+        evaluation: result.evaluation,
       },
     });
   } catch (err) {
-    return res.status(500).json({
+    return res.status(err.statusCode || 500).json({
       success: false,
-      error: { code: 'INTERNAL_ERROR', message: err.message },
+      error: { code: err.code || 'INTERNAL_ERROR', message: err.message },
+    });
+  }
+}
+
+export async function checkInternalJobEligibility(req, res) {
+  try {
+    const result = await getJobEligibility(req.params.id, req.body.studentUserId);
+    if (result.error) {
+      return res.status(result.error.status).json({
+        success: false,
+        error: { code: result.error.code, message: result.error.message },
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        job: {
+          jobId: result.job._id,
+          companyId: result.job.companyId,
+          companyName: result.job.companyName,
+          title: result.job.title,
+          status: result.job.status,
+          applicationDeadline: result.job.applicationDeadline,
+          selectionRounds: result.job.selectionRounds,
+        },
+        student: result.student,
+        evaluation: result.evaluation,
+      },
+    });
+  } catch (err) {
+    return res.status(err.statusCode || 500).json({
+      success: false,
+      error: { code: err.code || 'INTERNAL_ERROR', message: err.message },
+    });
+  }
+}
+
+export async function checkInternalEligibility(req, res) {
+  try {
+    const { studentUserId, eligibilityCriteria = {}, eligibleBatchYear } = req.body;
+    const student = await getStudentData(studentUserId);
+    const eligibleBatchYears = eligibilityCriteria.eligibleBatchYears ||
+      (eligibleBatchYear === undefined || eligibleBatchYear === null ? [] : [eligibleBatchYear]);
+    const evaluation = evaluateJobEligibility(
+      { ...eligibilityCriteria, eligibleBatchYears },
+      student
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: { student, evaluation },
+    });
+  } catch (err) {
+    return res.status(err.statusCode || 500).json({
+      success: false,
+      error: { code: err.code || 'INTERNAL_ERROR', message: err.message },
     });
   }
 }
@@ -585,4 +770,3 @@ export async function getInternalJobData(req, res) {
     });
   }
 }
-

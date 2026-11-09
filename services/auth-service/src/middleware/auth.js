@@ -1,6 +1,17 @@
 import { verifyAccessToken } from "../utils/security.js";
 import { User } from "../models/User.js";
 
+export function requireInternalServiceKey(req, res, next) {
+  const serviceKey = process.env.SERVICE_API_KEY;
+  if (!serviceKey || req.get("x-service-key") !== serviceKey) {
+    return res.status(403).json({
+      success: false,
+      error: { code: "INVALID_SERVICE_KEY", message: "Internal service authorization failed" },
+    });
+  }
+  next();
+}
+
 /**
  * Authentication Middleware: Validates JWT access token
  */
@@ -74,4 +85,3 @@ export async function authenticate(req, res, next) {
     });
   }
 }
-

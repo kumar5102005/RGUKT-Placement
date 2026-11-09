@@ -32,7 +32,6 @@ app.get("/health", (req, res) => {
       status: dbStatus,
       target: "rgukt_application_db"
     },
-    phase: "Phase 8 - Application and Recruitment Workflow"
   });
 });
 
@@ -65,4 +64,3 @@ async function start() {
 }
 
 start();
-

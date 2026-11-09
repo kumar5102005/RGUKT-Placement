@@ -119,12 +119,10 @@ const studentProfileSchema = new mongoose.Schema(
     branch: {
       type: String,
       enum: ["CSE", "ECE", "EEE", "MECH", "CIVIL", "CHEM", "MME"],
-      required: true,
       index: true,
     },
     batchYear: {
       type: Number,
-      required: true,
       index: true,
     },
     tenthPercentage: {
@@ -141,19 +139,16 @@ const studentProfileSchema = new mongoose.Schema(
       type: Number,
       min: 0,
       max: 10,
-      default: 0,
       index: true,
     },
     activeBacklogs: {
       type: Number,
       min: 0,
-      default: 0,
       index: true,
     },
     backlogHistory: {
       type: Number,
       min: 0,
-      default: 0,
     },
     semesters: [semesterSchema],
 
@@ -239,4 +234,3 @@ studentProfileSchema.index({
 });
 
 export const StudentProfile = mongoose.model("StudentProfile", studentProfileSchema);
-

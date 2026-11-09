@@ -21,7 +21,8 @@ export default function AdminStudentSearch() {
 
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [directoryError, setDirectoryError] = useState('');
+  const [verificationError, setVerificationError] = useState('');
   const [actionMessage, setActionMessage] = useState('');
 
   // Search & Filter State
@@ -37,7 +38,7 @@ export default function AdminStudentSearch() {
 
   async function fetchStudents() {
     setLoading(true);
-    setError('');
+    setDirectoryError('');
     try {
       const params = new URLSearchParams();
       if (searchTerm.trim()) params.append('search', searchTerm.trim());
@@ -56,10 +57,10 @@ export default function AdminStudentSearch() {
       if (data.success && data.data?.students) {
         setStudents(data.data.students);
       } else {
-        setError(data.error?.message || 'Failed to fetch student directory');
+        setDirectoryError(data.error?.message || 'Failed to fetch student directory');
       }
     } catch (err) {
-      setError(err.message || 'Error connecting to Student Service');
+      setDirectoryError(err.message || 'Error connecting to Student Service');
     } finally {
       setLoading(false);
     }
@@ -67,6 +68,7 @@ export default function AdminStudentSearch() {
 
   async function handleVerification(studentId, newStatus) {
     setActionMessage('');
+    setVerificationError('');
     try {
       const notes = prompt(`Enter verification note for ${studentId}:`, `Status changed to ${newStatus} by TPO.`);
       const res = await fetch(`/api/v1/students/${studentId}/verify`, {
@@ -88,10 +90,10 @@ export default function AdminStudentSearch() {
           prev.map((s) => (s.studentId === studentId ? { ...s, verificationStatus: newStatus } : s))
         );
       } else {
-        setError(data.error?.message || 'Verification update failed');
+        setVerificationError(data.error?.message || 'Verification update failed');
       }
     } catch (err) {
-      setError(err.message || 'Error executing verification update');
+      setVerificationError(err.message || 'Error executing verification update');
     }
   }
 
@@ -122,10 +124,17 @@ export default function AdminStudentSearch() {
         </div>
       )}
 
-      {error && (
+      {directoryError && (
         <div className="p-3.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-medium flex items-center space-x-2">
           <AlertCircle className="w-4 h-4 flex-shrink-0" />
-          <span>{error}</span>
+          <span>Student directory: {directoryError}</span>
+        </div>
+      )}
+
+      {verificationError && (
+        <div className="p-3.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-medium flex items-center space-x-2">
+          <AlertCircle className="w-4 h-4 flex-shrink-0" />
+          <span>Verification update failed: {verificationError}</span>
         </div>
       )}
 
@@ -238,17 +247,19 @@ export default function AdminStudentSearch() {
 
                     <td className="py-3 px-4">
                       <span className="px-2 py-0.5 rounded font-semibold bg-slate-700 text-slate-200">
-                        {s.branch}
+                        {s.branch || 'Not provided'}
                       </span>
-                      <div className="text-[11px] text-slate-400 mt-0.5">Batch {s.batchYear}</div>
+                      <div className="text-[11px] text-slate-400 mt-0.5">
+                        Batch {s.batchYear ?? 'Not provided'}
+                      </div>
                     </td>
 
                     <td className="py-3 px-4 font-mono">
                       <div>
-                        CGPA: <span className="font-bold text-white">{s.btechCgpa || '0.00'}</span>
+                        CGPA: <span className="font-bold text-white">{s.btechCgpa ?? 'Not provided'}</span>
                       </div>
                       <div className={s.activeBacklogs > 0 ? "text-rose-400 font-semibold" : "text-slate-400"}>
-                        Backlogs: {s.activeBacklogs || 0}
+                        Backlogs: {s.activeBacklogs ?? 'Not provided'}
                       </div>
                     </td>
 
@@ -311,4 +322,3 @@ export default function AdminStudentSearch() {
     </div>
   );
 }
-

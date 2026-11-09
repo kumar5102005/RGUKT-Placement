@@ -13,7 +13,10 @@ import {
  */
 export async function register(req, res) {
   try {
-    const { email, password, fullName, role = "STUDENT", studentId, companyName } = req.body;
+    const { email, password, fullName, studentId, companyName } = req.body;
+    const role = req.body.role || "STUDENT";
+    const normalizedStudentId =
+      role === "STUDENT" ? String(studentId).trim().toLowerCase() : undefined;
 
     const existingUser = await User.findOne({ email: email.toLowerCase().trim() });
     if (existingUser) {
@@ -26,8 +29,8 @@ export async function register(req, res) {
       });
     }
 
-    if (role === "STUDENT" && studentId) {
-      const existingStudentId = await User.findOne({ studentId: studentId.toLowerCase().trim() });
+    if (normalizedStudentId) {
+      const existingStudentId = await User.findOne({ studentId: normalizedStudentId });
       if (existingStudentId) {
         return res.status(409).json({
           success: false,
@@ -47,7 +50,7 @@ export async function register(req, res) {
       fullName: fullName.trim(),
       role,
       status: "ACTIVE",
-      studentId: studentId ? studentId.trim() : undefined,
+      studentId: normalizedStudentId,
       companyName: companyName ? companyName.trim() : undefined,
       lastLoginAt: new Date(),
     });
@@ -81,6 +84,21 @@ export async function register(req, res) {
       },
     });
   } catch (error) {
+    if (error.code === 11000) {
+      const duplicateStudentId = Boolean(error.keyPattern?.studentId);
+      return res.status(409).json({
+        success: false,
+        error: duplicateStudentId
+          ? {
+              code: "STUDENT_ID_EXISTS",
+              message: "A student profile with this ID is already registered",
+            }
+          : {
+              code: "USER_ALREADY_EXISTS",
+              message: "An account with this email address already exists",
+            },
+      });
+    }
     return res.status(500).json({
       success: false,
       error: {
@@ -427,3 +445,43 @@ export async function listUsers(req, res) {
   }
 }
 
+export async function getInternalRecruiterByEmail(req, res) {
+  try {
+    const email = String(req.params.email || "").trim().toLowerCase();
+    const user = await User.findOne({ email, role: "RECRUITER", status: "ACTIVE" }).select(
+      "_id email fullName role status companyName"
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: {
+          code: "RECRUITER_ACCOUNT_NOT_FOUND",
+          message: "No active recruiter account exists for this email.",
+        },
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        user: {
+          id: user._id.toString(),
+          email: user.email,
+          fullName: user.fullName,
+          role: user.role,
+          status: user.status,
+          companyName: user.companyName,
+        },
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: "RECRUITER_LOOKUP_FAILED",
+        message: "Failed to verify recruiter account",
+      },
+    });
+  }
+}

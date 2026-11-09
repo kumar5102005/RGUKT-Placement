@@ -78,6 +78,24 @@ const offerDetailsSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const recruitmentRoundSchema = new mongoose.Schema(
+  {
+    roundNumber: { type: Number, required: true },
+    name: { type: String, required: true, trim: true },
+    description: { type: String, default: '' },
+    mode: { type: String, enum: ['Online', 'In-Person', 'Hybrid'], default: 'Online' },
+    scheduledDate: { type: Date, default: null },
+    durationMinutes: { type: Number, default: null },
+    venueOrLink: { type: String, default: '' },
+    status: {
+      type: String,
+      enum: ['PLANNED', 'SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'],
+      default: 'PLANNED',
+    },
+  },
+  { _id: false }
+);
+
 const applicationSchema = new mongoose.Schema(
   {
     jobId: {
@@ -133,11 +151,11 @@ const applicationSchema = new mongoose.Schema(
     },
     activeBacklogs: {
       type: Number,
-      default: 0,
+      required: true,
     },
     batchYear: {
       type: Number,
-      default: 2026,
+      required: true,
     },
     resumeUrl: {
       type: String,
@@ -172,6 +190,10 @@ const applicationSchema = new mongoose.Schema(
       type: [interviewSchema],
       default: [],
     },
+    recruitmentRounds: {
+      type: [recruitmentRoundSchema],
+      default: [],
+    },
     offerDetails: {
       type: offerDetailsSchema,
       default: () => ({}),
@@ -203,4 +225,3 @@ applicationSchema.index({
 
 const Application = mongoose.model('Application', applicationSchema);
 export default Application;
-

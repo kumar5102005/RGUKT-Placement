@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-Phase 2 establishes the complete containerized infrastructure and skeleton microservices architecture for the RGUKT Ongole Placement Hub. The architecture enforces strict domain isolation, database-per-service boundaries, bridge networking, centralized logging, and environment-driven configurations.
+The containerized infrastructure enforces database-per-service boundaries, bridge networking, centralized logging, and environment-driven configuration.
 
 ---
 
@@ -51,6 +51,9 @@ Phase 2 establishes the complete containerized infrastructure and skeleton micro
 │          └─────────────────┘          └─────────────────┘          └─────────────────┘     │
 │                                                                                            │
 │   ┌────────────────────────────────────────────────────────────────────────────────────┐   │
+│   │ RabbitMQ (internal event transport)                                               │   │
+│   └────────────────────────────────────────────────────────────────────────────────────┘   │
+│   ┌────────────────────────────────────────────────────────────────────────────────────┐   │
 │   │                         React Client SPA (Vite + Tailwind)                         │   │
 │   │                                Internal Port: 80                                   │   │
 │   └────────────────────────────────────────────────────────────────────────────────────┘   │
@@ -90,11 +93,11 @@ Phase 2 establishes the complete containerized infrastructure and skeleton micro
 
 ### Option A: Running via Docker Compose (Recommended)
 
-1. Verify environment configuration:
+1. Copy the example environment file, then set unique strong values for `JWT_SECRET`, `SERVICE_API_KEY`, `RABBITMQ_USER`, and `RABBITMQ_PASSWORD`. Use an alphanumeric RabbitMQ password so it can be embedded safely in the internal AMQP URL:
    ```bash
    cp .env.example .env
    ```
-2. Build and launch all 11 containers:
+2. Build and launch the services:
    ```bash
    docker compose up --build
    ```
@@ -114,4 +117,3 @@ Phase 2 establishes the complete containerized infrastructure and skeleton micro
    npm --prefix services/auth-service run dev
    npm --prefix client run dev
    ```
-

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate, authorize, requireInternalServiceKey } from '../middleware/auth.js';
 import {
   validateApplicationSubmission,
   validateStageTransition,
@@ -16,9 +16,12 @@ import {
   updatePlacementOffer,
   getWorkflowStages,
   createCustomStage,
+  syncJobRecruitmentRounds,
 } from '../controllers/applicationController.js';
 
 const router = Router();
+
+router.put('/internal/jobs/:jobId/recruitment-rounds', requireInternalServiceKey, syncJobRecruitmentRounds);
 
 // ─── Workflow Stages (Standard & Configurable) ──────────────────────────────
 router.get('/stages', authenticate, getWorkflowStages);
@@ -72,4 +75,3 @@ router.patch(
 );
 
 export default router;
-

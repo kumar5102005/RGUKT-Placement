@@ -37,8 +37,8 @@ services:
       PORT: 4001
       NODE_ENV: ${NODE_ENV:-development}
       MONGODB_URI: ${AUTH_DB_URI:-mongodb://auth-db:27017/rgukt_auth_db}
-      JWT_SECRET: ${JWT_SECRET:-rgukt_super_secure_jwt_secret_token_2026_dev_key}
-      SERVICE_API_KEY: ${SERVICE_API_KEY:-rgukt_placement_internal_secret_key_2026}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      SERVICE_API_KEY: ${SERVICE_API_KEY:?Set SERVICE_API_KEY in .env}
     expose:
       - "4001"
     depends_on:
@@ -70,8 +70,9 @@ services:
       PORT: 4002
       NODE_ENV: ${NODE_ENV:-development}
       MONGODB_URI: ${STUDENT_DB_URI:-mongodb://student-db:27017/rgukt_student_db}
-      SERVICE_API_KEY: ${SERVICE_API_KEY:-rgukt_placement_internal_secret_key_2026}
-      JWT_SECRET: ${JWT_SECRET:-rgukt_super_secure_jwt_secret_token_2026_dev_key}
+      SERVICE_API_KEY: ${SERVICE_API_KEY:?Set SERVICE_API_KEY in .env}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      COMPANY_DRIVE_SERVICE_URL: http://company-drive-service:4003
     expose:
       - "4002"
     depends_on:
@@ -103,8 +104,11 @@ services:
       PORT: 4003
       NODE_ENV: ${NODE_ENV:-development}
       MONGODB_URI: ${DRIVE_DB_URI:-mongodb://drive-db:27017/rgukt_drive_db}
-      SERVICE_API_KEY: ${SERVICE_API_KEY:-rgukt_placement_internal_secret_key_2026}
-      JWT_SECRET: ${JWT_SECRET:-rgukt_super_secure_jwt_secret_token_2026_dev_key}
+      SERVICE_API_KEY: ${SERVICE_API_KEY:?Set SERVICE_API_KEY in .env}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      AUTH_SERVICE_URL: http://auth-service:4001
+      STUDENT_SERVICE_URL: http://student-service:4002
+      APPLICATION_SERVICE_URL: http://application-service:4004
     expose:
       - "4003"
     depends_on:
@@ -136,8 +140,10 @@ services:
       PORT: 4004
       NODE_ENV: ${NODE_ENV:-development}
       MONGODB_URI: ${APPLICATION_DB_URI:-mongodb://application-db:27017/rgukt_application_db}
-      SERVICE_API_KEY: ${SERVICE_API_KEY:-rgukt_placement_internal_secret_key_2026}
-      JWT_SECRET: ${JWT_SECRET:-rgukt_super_secure_jwt_secret_token_2026_dev_key}
+      SERVICE_API_KEY: ${SERVICE_API_KEY:?Set SERVICE_API_KEY in .env}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      COMPANY_DRIVE_SERVICE_URL: http://company-drive-service:4003
+      NOTIFICATION_SERVICE_URL: http://notification-service:4005
     expose:
       - "4004"
     depends_on:
@@ -160,6 +166,20 @@ services:
       - placement_network
     restart: unless-stopped
 
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?Set RABBITMQ_USER in .env}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - placement_network
+    restart: unless-stopped
+
   # ── Notification Service & Dedicated Database ─────────────────────────────────
   notification-service:
     build:
@@ -169,11 +189,14 @@ services:
       PORT: 4005
       NODE_ENV: ${NODE_ENV:-development}
       MONGODB_URI: ${NOTIFICATION_DB_URI:-mongodb://notification-db:27017/rgukt_notification_db}
-      SERVICE_API_KEY: ${SERVICE_API_KEY:-rgukt_placement_internal_secret_key_2026}
+      SERVICE_API_KEY: ${SERVICE_API_KEY:?Set SERVICE_API_KEY in .env}
+      RABBITMQ_URL: "amqp://${RABBITMQ_USER:?Set RABBITMQ_USER in .env}:${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}@rabbitmq:5672"
     expose:
       - "4005"
     depends_on:
       notification-db:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     networks:
       - placement_network
@@ -202,4 +225,3 @@ volumes:
   drive_data:
   application_data:
   notification_data:
-

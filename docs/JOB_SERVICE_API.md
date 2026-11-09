@@ -5,7 +5,6 @@
 **Alternative Gateway Path**: `http://localhost:8080/api/v1/drives/jobs`  
 **Direct Port**: `4003`  
 **Database**: `rgukt_drive_db` (MongoDB - collection: `jobs`)  
-**Phase**: Phase 6 — Job Management Service
 
 ---
 
@@ -50,8 +49,7 @@ Public endpoint returning service status and database connectivity.
   "database": {
     "status": "connected",
     "name": "rgukt_drive_db"
-  },
-  "phase": "Phase 6 - Job Management Service"
+  }
 }
 ```
 
@@ -99,9 +97,22 @@ Public endpoint returning service status and database connectivity.
     "requiredSkills": ["Java", "SQL"]
   },
   "selectionRounds": [
-    { "roundNumber": 1, "name": "Online Aptitude & Coding Test", "mode": "Online" },
-    { "roundNumber": 2, "name": "Technical Interview I", "mode": "Online" },
-    { "roundNumber": 3, "name": "Managerial & HR Discussion", "mode": "In-Person" }
+    {
+      "roundNumber": 1,
+      "name": "Online Aptitude & Coding Test",
+      "description": "Complete the timed assessment.",
+      "mode": "Online",
+      "scheduledDate": "2026-11-26T09:00:00.000Z",
+      "durationMinutes": 90,
+      "venueOrLink": "https://assessment.example.com",
+      "status": "SCHEDULED"
+    },
+    {
+      "roundNumber": 2,
+      "name": "Technical Interview",
+      "mode": "Online",
+      "status": "PLANNED"
+    }
   ],
   "applicationDeadline": "2026-11-25T23:59:59.000Z",
   "driveDate": "2026-12-01T09:00:00.000Z",
@@ -185,7 +196,7 @@ Returns all job postings associated with the recruiter's company, including draf
 ### 5. Get Job Details by ID
 `GET /api/v1/jobs/:id`  
 **Access**: Authenticated  
-Returns complete job specifications, company snapshot, compensation breakup, and selection rounds.
+Returns complete job specifications and company snapshot. Students receive the round outline; full schedules and venues are available to applicants in their application records.
 
 ---
 
@@ -193,6 +204,7 @@ Returns complete job specifications, company snapshot, compensation breakup, and
 `PUT /api/v1/jobs/:id`  
 **Access**: `ADMIN` or the owning `RECRUITER`.  
 Allows modifying title, package, deadlines, description, and eligibility cutoffs.
+Round updates are synchronized to applications and trigger idempotent applicant notifications. If synchronization fails, the job is saved and the API returns `RECRUITMENT_ROUND_SYNC_FAILED`; resubmitting an update retries the pending synchronization.
 
 ---
 
@@ -220,20 +232,9 @@ Removes the job document and decrements the company's placement drive counter.
 `POST /api/v1/jobs/:id/check-eligibility`  
 **Access**: Authenticated (`STUDENT`, `RECRUITER`, `ADMIN`).
 
-**Request Body:**
+**Request Body:** No student academic data is accepted from the browser. The service loads the authenticated student's profile from Student Service.
 ```json
-{
-  "studentData": {
-    "btechCgpa": 7.45,
-    "branch": "CSE",
-    "batchYear": 2026,
-    "activeBacklogs": 0,
-    "totalBacklogsHistory": 1,
-    "tenthPercentage": 82.5,
-    "pucCgpa": 8.1,
-    "skills": ["Java", "SQL", "Spring Boot"]
-  }
-}
+{}
 ```
 
 **Response (200 OK):**
@@ -246,19 +247,20 @@ Removes the job document and decrements the company's placement drive counter.
     "companyName": "TechCorp Global",
     "eligibilityRules": { ... },
     "evaluation": {
+      "status": "ELIGIBLE",
+      "eligible": true,
       "isEligible": true,
       "reasons": [],
-      "criteriaBreakdown": {
-        "cgpa": { "required": 7.0, "actual": 7.45, "passed": true },
-        "branch": { "required": ["CSE", "ECE", "EEE"], "actual": "CSE", "passed": true },
-        "batchYear": { "required": [2025, 2026], "actual": 2026, "passed": true },
-        "activeBacklogs": { "requiredMax": 0, "actual": 0, "passed": true },
-        "skills": { "required": ["Java", "SQL"], "missing": [], "passed": true }
+      "criteria": {
+        "cgpa": { "required": 7.0, "actual": 7.45, "status": "PASS", "passed": true },
+        "branch": { "required": ["CSE", "ECE", "EEE"], "actual": "CSE", "status": "PASS", "passed": true }
       }
     }
   }
 }
 ```
+
+Evaluation status is `ELIGIBLE`, `NOT_ELIGIBLE`, or `INSUFFICIENT_DATA`. `INSUFFICIENT_DATA` means a required academic value is missing or invalid; it is not treated as an eligible result. Detailed round schedules and venues are returned to applicants in their application records, while the public student job response contains only round names, descriptions, and modes.
 
 ---
 
@@ -285,4 +287,3 @@ All eligibility rules are dynamically stored on each Job document and verified a
    - Compound indexes on `{ status: 1, applicationDeadline: 1 }`
    - Multikey indexes on `{ "eligibility.allowedBranches": 1 }` and `{ "eligibility.eligibleBatchYears": 1 }`
    - Full-text search index across `title`, `companyName`, `description`, and `requiredSkills`.
-

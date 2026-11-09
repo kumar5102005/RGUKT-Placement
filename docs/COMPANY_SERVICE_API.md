@@ -4,7 +4,6 @@
 **Base URL**: `http://localhost:8080/api/v1/drives` (via NGINX Gateway)  
 **Direct Port**: `4003`  
 **Database**: `rgukt_drive_db` (MongoDB)  
-**Phase**: Phase 5 — Company & Recruiter Management
 
 ---
 
@@ -38,8 +37,7 @@ No authentication required.
   "service": "company-drive-service",
   "timestamp": "2026-11-08T00:00:00.000Z",
   "uptime": 1234.56,
-  "database": { "status": "connected", "name": "rgukt_drive_db" },
-  "phase": "Phase 5 - Company & Recruiter Management"
+  "database": { "status": "connected", "name": "rgukt_drive_db" }
 }
 ```
 
@@ -245,33 +243,38 @@ No authentication required.
 
 **POST** `/api/v1/drives/:id/recruiters`
 
-**Role**: `ADMIN` only
+**Roles**: `ADMIN`, or the primary recruiter managing their own company
 
 **Request Body:**
 ```json
 {
-  "userId": "64abc123def456",
-  "fullName": "Ravi Teja",
   "email": "ravi.teja@accenture.com",
-  "role": "SECONDARY"
+  "designation": "Technical Recruiter",
+  "phone": "+91 40 1234 5678"
 }
 ```
 
 | Field | Required | Values |
 |---|---|---|
-| `userId` | Yes | Auth Service user ID |
-| `fullName` | Yes | Recruiter's full name |
-| `email` | Yes | Valid email |
-| `role` | No | `PRIMARY` or `SECONDARY` (default: `SECONDARY`) |
+| `email` | Yes | Email of an existing active `RECRUITER` account |
+| `designation` | No | Company role/title |
+| `phone` | No | Contact number |
+
+Auth Service verifies the account and supplies its user ID and name. The association always has the `SECONDARY` role. This endpoint does not create accounts or generate, accept, or return passwords.
 
 **Response (200):**
 ```json
 {
   "success": true,
   "message": "Recruiter added to company.",
-  "data": { "company": { ...companyObject } }
+  "data": {
+    "company": { ...companyObject },
+    "recruiter": { "userId": "...", "email": "...", "role": "SECONDARY", "status": "ACTIVE" }
+  }
 }
 ```
+
+The primary recruiter can also use **POST** `/api/v1/drives/my/recruiters` with the same body. Active company recruiters can view the company and team; only the primary recruiter can manage membership and edit the company profile.
 
 ---
 
@@ -279,8 +282,10 @@ No authentication required.
 
 **DELETE** `/api/v1/drives/:id/recruiters/:recruiterId`
 
-**Role**: `ADMIN` only  
+**Roles**: `ADMIN`, or the primary recruiter managing their own company
 **`:recruiterId`** is the recruiter's `userId`.
+
+Company managers cannot remove the primary recruiter or change their status.
 
 **Response (200):**
 ```json
@@ -353,6 +358,8 @@ Used by other microservices (application-service, etc.) to fetch company info wi
       "fullName": "Recruiter Name",
       "email": "recruiter@company.com",
       "role": "PRIMARY",
+      "status": "ACTIVE",
+      "designation": "Primary Recruiter",
       "addedAt": "2026-11-08T00:00:00.000Z"
     }
   ],
@@ -411,4 +418,3 @@ All errors follow the same format:
 | `location.city`, `location.state` | Compound | Location-based filtering |
 | `name`, `description` | Text | Full-text search |
 | `registeredBy` | Index | Recruiter's company lookup |
-

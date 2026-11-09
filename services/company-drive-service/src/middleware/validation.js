@@ -179,18 +179,26 @@ export function validateVerification(req, res, next) {
  */
 export function validateAddRecruiter(req, res, next) {
   const errors = [];
-  const { fullName, email, role } = req.body;
+  const { email, designation, phone, role, password } = req.body;
 
-  if (!fullName || typeof fullName !== 'string' || fullName.trim().length < 2) {
-    errors.push({ field: 'fullName', message: 'Recruiter full name must be at least 2 characters' });
-  }
-
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  if (!email || typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
     errors.push({ field: 'email', message: 'A valid recruiter work email is required' });
   }
 
-  if (role !== undefined && !['PRIMARY', 'SECONDARY'].includes(role)) {
-    errors.push({ field: 'role', message: 'Role must be PRIMARY or SECONDARY' });
+  if (designation !== undefined && (typeof designation !== 'string' || designation.trim().length > 100)) {
+    errors.push({ field: 'designation', message: 'Designation must be a string no longer than 100 characters' });
+  }
+
+  if (phone !== undefined && (typeof phone !== 'string' || phone.trim().length > 30)) {
+    errors.push({ field: 'phone', message: 'Phone must be a string no longer than 30 characters' });
+  }
+
+  if (role !== undefined && role !== 'SECONDARY') {
+    errors.push({ field: 'role', message: 'Additional recruiters can only be assigned the SECONDARY role' });
+  }
+
+  if (password !== undefined) {
+    errors.push({ field: 'password', message: 'Passwords must be set by the recruiter through the Auth Service' });
   }
 
   if (errors.length > 0) {
@@ -199,4 +207,3 @@ export function validateAddRecruiter(req, res, next) {
 
   next();
 }
-

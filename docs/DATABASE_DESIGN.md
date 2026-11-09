@@ -26,9 +26,10 @@
      _id: ObjectId,
      email: String,          // Unique, lowercase, indexed (e.g. o180001@rguktong.ac.in)
      passwordHash: String,   // Salted hash
-     role: String,           // Enum: "STUDENT", "TPO_ADMIN", "COORDINATOR"
-     isActive: Boolean,      // Default: true
-     isEmailVerified: Boolean,
+     role: String,           // Enum: "STUDENT", "ADMIN", "RECRUITER"
+     status: String,         // ACTIVE, INACTIVE, SUSPENDED, PENDING_APPROVAL
+     studentId: String,      // Lowercase RGUKT ID; unique sparse index for student accounts
+     companyName: String,    // Optional recruiter organization name
      lastLoginAt: Date,
      createdAt: Date,
      updatedAt: Date
@@ -65,12 +66,12 @@
    {
      _id: ObjectId,
      userId: String,         // Global auth userId (indexed, unique)
-     studentId: String,      // RGUKT ID, e.g. "O180123" (indexed, unique)
+     studentId: String,      // Lowercase RGUKT ID, e.g. "o180123" (indexed, unique)
      fullName: String,
      gender: String,         // "MALE", "FEMALE", "OTHER"
      phone: String,
-     branch: String,         // "CSE", "ECE", "EEE", "MECH", "CIVIL", "CHEM"
-     batchYear: Number,      // e.g. 2026
+     branch: String,         // Optional until provided; RGUKT branch enum
+     batchYear: Number,      // Optional graduation year
      tenthPercentage: Number,
      pucCgpa: Number,
      btechCgpa: Number,      // Indexed for eligibility queries
@@ -80,7 +81,8 @@
      portfolioUrl: String,
      githubUrl: String,
      linkedinUrl: String,
-     skills: [String],
+     technicalSkills: [String],
+     nonTechnicalSkills: [String],
      verificationStatus: String, // "PENDING", "VERIFIED", "REJECTED"
      verifiedBy: String,     // Admin ID
      verifiedAt: Date,
@@ -117,6 +119,7 @@
    ```
    - **Indexes**:
      - `{ name: 1 }`: Unique
+   - Recruiter associations contain the Auth Service `userId`, account name/email, designation, role, and active status. New associations never create credentials; the legacy password field is excluded from Company Service API reads.
 
 2. `placement_drives`
    ```javascript
@@ -179,6 +182,18 @@
      driveTitle: String,       // Denormalized snapshot
      resumeUrl: String,        // Resume version at time of application
      status: String,           // "APPLIED", "SHORTLISTED", "OA_CLEARED", "INTERVIEW_CLEARED", "OFFERED", "REJECTED"
+     recruitmentRounds: [
+       {
+         roundNumber: Number,
+         name: String,
+         description: String,
+         mode: String,
+         scheduledDate: Date,
+         durationMinutes: Number,
+         venueOrLink: String,
+         status: String
+       }
+     ],
      currentRound: Number,     // e.g. 1
      appliedAt: Date,
      stageHistory: [
@@ -230,4 +245,3 @@
    - **Indexes**:
      - `{ userId: 1, isRead: 1, createdAt: -1 }`: User inbox query index
      - `{ createdAt: 1 }`: TTL index (auto-purge notifications after 90 days)
-

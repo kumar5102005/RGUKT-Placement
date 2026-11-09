@@ -8,10 +8,11 @@ const ALLOWED_STATUSES = ["ACTIVE", "INACTIVE", "SUSPENDED", "PENDING_APPROVAL"]
 
 export function validateRegister(req, res, next) {
   const { email, password, fullName, role, studentId, companyName } = req.body;
+  const effectiveRole = role || "STUDENT";
 
   const errors = [];
 
-  if (!email || !EMAIL_REGEX.test(email.trim())) {
+  if (typeof email !== "string" || !EMAIL_REGEX.test(email.trim())) {
     errors.push("A valid email address is required");
   }
 
@@ -29,7 +30,7 @@ export function validateRegister(req, res, next) {
     errors.push(`Role must be one of: ${ALLOWED_ROLES.join(", ")}`);
   }
 
-  if (role === "STUDENT") {
+  if (effectiveRole === "STUDENT") {
     if (!studentId || !String(studentId).trim()) {
       errors.push("Student ID is required for student registration");
     } else if (!/^o\d{6}$/i.test(String(studentId).trim())) {
@@ -37,7 +38,8 @@ export function validateRegister(req, res, next) {
     }
   }
 
-  if (role === "RECRUITER" && (!companyName || companyName.trim().length < 2)) {
+  if (effectiveRole === "RECRUITER" &&
+      (typeof companyName !== "string" || companyName.trim().length < 2)) {
     errors.push("Company name is required for Recruiter registration");
   }
 
@@ -95,4 +97,3 @@ export function validateStatusUpdate(req, res, next) {
 
   next();
 }
-

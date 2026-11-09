@@ -6,8 +6,8 @@ const NotificationSchema = new mongoose.Schema({
   title: { type: String, required: true },
   message: { type: String, required: true },
   payload: { type: mongoose.Schema.Types.Mixed }, // additional data for UI navigation
+  eventId: { type: String, unique: true, sparse: true },
   isRead: { type: Boolean, default: false },
 }, { timestamps: true });
 
 module.exports.Notification = mongoose.model('Notification', NotificationSchema);
-

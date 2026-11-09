@@ -11,6 +11,55 @@ function sendValidationError(res, details) {
   });
 }
 
+function validateSelectionRounds(selectionRounds, errors) {
+  if (!Array.isArray(selectionRounds)) {
+    errors.push({ field: 'selectionRounds', message: 'Recruitment rounds must be an array.' });
+    return;
+  }
+
+  const roundNumbers = new Set();
+  let previousScheduledDate = null;
+  selectionRounds.forEach((round, index) => {
+    const field = `selectionRounds[${index}]`;
+    const roundNumber = Number(round?.roundNumber);
+    if (!Number.isInteger(roundNumber) || roundNumber !== index + 1 || roundNumbers.has(roundNumber)) {
+      errors.push({ field: `${field}.roundNumber`, message: 'Round numbers must be unique and sequential, starting at 1.' });
+    } else {
+      roundNumbers.add(roundNumber);
+    }
+
+    if (typeof round?.name !== 'string' || round.name.trim().length < 2) {
+      errors.push({ field: `${field}.name`, message: 'Round name must be at least 2 characters.' });
+    }
+
+    if (round?.mode !== undefined && !['Online', 'In-Person', 'Hybrid'].includes(round.mode)) {
+      errors.push({ field: `${field}.mode`, message: 'Mode must be Online, In-Person, or Hybrid.' });
+    }
+
+    if (round?.scheduledDate) {
+      const scheduledDate = new Date(round.scheduledDate);
+      if (Number.isNaN(scheduledDate.getTime())) {
+        errors.push({ field: `${field}.scheduledDate`, message: 'Round schedule must be a valid date and time.' });
+      } else {
+        if (previousScheduledDate && scheduledDate < previousScheduledDate) {
+          errors.push({ field: `${field}.scheduledDate`, message: 'Scheduled rounds must be in chronological order.' });
+        }
+        previousScheduledDate = scheduledDate;
+      }
+    }
+
+    if (round?.durationMinutes !== undefined && round.durationMinutes !== null &&
+        (!Number.isInteger(Number(round.durationMinutes)) || Number(round.durationMinutes) < 1)) {
+      errors.push({ field: `${field}.durationMinutes`, message: 'Duration must be a positive number of minutes.' });
+    }
+
+    if (round?.status !== undefined &&
+        !['PLANNED', 'SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'].includes(round.status)) {
+      errors.push({ field: `${field}.status`, message: 'Invalid recruitment round status.' });
+    }
+  });
+}
+
 /**
  * Validates job creation payload.
  */
@@ -25,6 +74,7 @@ export function validateJobCreation(req, res, next) {
     salary,
     eligibility,
     companyId,
+    selectionRounds,
   } = req.body;
 
   // Title
@@ -106,13 +156,41 @@ export function validateJobCreation(req, res, next) {
       }
     }
 
-    if (eligibility.maxActiveBacklogs !== undefined) {
-      const backlogs = Number(eligibility.maxActiveBacklogs);
-      if (isNaN(backlogs) || backlogs < 0) {
-        errors.push({ field: 'eligibility.maxActiveBacklogs', message: 'Maximum backlogs must be non-negative.' });
+    for (const field of ['maxActiveBacklogs', 'maxHistoryBacklogs']) {
+      if (eligibility[field] !== undefined) {
+        const backlogs = Number(eligibility[field]);
+        if (!Number.isInteger(backlogs) || backlogs < 0) {
+          errors.push({ field: `eligibility.${field}`, message: 'Backlog limits must be non-negative integers.' });
+        }
       }
     }
+
+    if (eligibility.minTenthPercentage !== undefined) {
+      const percentage = Number(eligibility.minTenthPercentage);
+      if (!Number.isFinite(percentage) || percentage < 0 || percentage > 100) {
+        errors.push({ field: 'eligibility.minTenthPercentage', message: 'Minimum 10th percentage must be between 0 and 100.' });
+      }
+    }
+
+    if (eligibility.minTwelfthPucCgpa !== undefined) {
+      const cgpa = Number(eligibility.minTwelfthPucCgpa);
+      if (!Number.isFinite(cgpa) || cgpa < 0 || cgpa > 10) {
+        errors.push({ field: 'eligibility.minTwelfthPucCgpa', message: 'Minimum PUC CGPA must be between 0 and 10.' });
+      }
+    }
+
+    if (eligibility.eligibleBatchYears !== undefined &&
+        (!Array.isArray(eligibility.eligibleBatchYears) ||
+          eligibility.eligibleBatchYears.some((year) => !Number.isInteger(Number(year))))) {
+      errors.push({ field: 'eligibility.eligibleBatchYears', message: 'Eligible graduation years must be an array of whole years.' });
+    }
+    if (eligibility.eligibleBatchYears !== undefined && Array.isArray(eligibility.eligibleBatchYears) &&
+        eligibility.eligibleBatchYears.some((year) => Number(year) < 2000 || Number(year) > 2200)) {
+      errors.push({ field: 'eligibility.eligibleBatchYears', message: 'Eligible graduation years must be between 2000 and 2200.' });
+    }
   }
+
+  if (selectionRounds !== undefined) validateSelectionRounds(selectionRounds, errors);
 
   // Admin creating job must specify companyId
   if (req.user?.role === 'ADMIN' && !companyId) {
@@ -131,7 +209,17 @@ export function validateJobCreation(req, res, next) {
  */
 export function validateJobUpdate(req, res, next) {
   const errors = [];
-  const { title, description, applicationDeadline, roleCategory, workplaceType, salary, eligibility, status } = req.body;
+  const {
+    title,
+    description,
+    applicationDeadline,
+    roleCategory,
+    workplaceType,
+    salary,
+    eligibility,
+    status,
+    selectionRounds,
+  } = req.body;
 
   if (title !== undefined && (typeof title !== 'string' || title.trim().length < 3)) {
     errors.push({ field: 'title', message: 'Job title must be at least 3 characters long.' });
@@ -182,7 +270,32 @@ export function validateJobUpdate(req, res, next) {
         errors.push({ field: 'eligibility.allowedBranches', message: `Invalid branches: ${invalidBranches.join(', ')}` });
       }
     }
+    for (const field of ['maxActiveBacklogs', 'maxHistoryBacklogs']) {
+      if (eligibility[field] !== undefined &&
+          (!Number.isInteger(Number(eligibility[field])) || Number(eligibility[field]) < 0)) {
+        errors.push({ field: `eligibility.${field}`, message: 'Backlog limits must be non-negative integers.' });
+      }
+    }
+    if (eligibility.minTenthPercentage !== undefined &&
+        (!Number.isFinite(Number(eligibility.minTenthPercentage)) ||
+          Number(eligibility.minTenthPercentage) < 0 || Number(eligibility.minTenthPercentage) > 100)) {
+      errors.push({ field: 'eligibility.minTenthPercentage', message: 'Minimum 10th percentage must be between 0 and 100.' });
+    }
+    if (eligibility.minTwelfthPucCgpa !== undefined &&
+        (!Number.isFinite(Number(eligibility.minTwelfthPucCgpa)) ||
+          Number(eligibility.minTwelfthPucCgpa) < 0 || Number(eligibility.minTwelfthPucCgpa) > 10)) {
+      errors.push({ field: 'eligibility.minTwelfthPucCgpa', message: 'Minimum PUC CGPA must be between 0 and 10.' });
+    }
+    if (eligibility.eligibleBatchYears !== undefined &&
+        (!Array.isArray(eligibility.eligibleBatchYears) ||
+          eligibility.eligibleBatchYears.some((year) =>
+            !Number.isInteger(Number(year)) || Number(year) < 2000 || Number(year) > 2200
+          ))) {
+      errors.push({ field: 'eligibility.eligibleBatchYears', message: 'Eligible graduation years must be whole years between 2000 and 2200.' });
+    }
   }
+
+  if (selectionRounds !== undefined) validateSelectionRounds(selectionRounds, errors);
 
   if (errors.length > 0) {
     return sendValidationError(res, errors);
@@ -190,4 +303,3 @@ export function validateJobUpdate(req, res, next) {
 
   next();
 }
-

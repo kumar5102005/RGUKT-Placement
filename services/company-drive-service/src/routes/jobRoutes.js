@@ -10,6 +10,8 @@ import {
   deleteJob,
   updateJobStatus,
   checkEligibility,
+  checkInternalJobEligibility,
+  checkInternalEligibility,
   getInternalJobData,
 } from '../controllers/jobController.js';
 
@@ -17,6 +19,8 @@ const router = Router();
 
 // ─── Internal Service-to-Service Query ──────────────────────────────────────
 router.get('/internal/:id', requireInternalServiceKey, getInternalJobData);
+router.post('/internal/:id/check-eligibility', requireInternalServiceKey, checkInternalJobEligibility);
+router.post('/internal/eligibility-check', requireInternalServiceKey, checkInternalEligibility);
 
 // ─── Recruiter specific: list own company's jobs ─────────────────────────────
 router.get('/my', authenticate, authorize('RECRUITER'), getRecruiterJobs);
@@ -57,7 +61,6 @@ router.patch(
 );
 
 // ─── Check Candidate Eligibility ─────────────────────────────────────────────
-router.post('/:id/check-eligibility', authenticate, checkEligibility);
+router.post('/:id/check-eligibility', authenticate, authorize('STUDENT'), checkEligibility);
 
 export default router;
-

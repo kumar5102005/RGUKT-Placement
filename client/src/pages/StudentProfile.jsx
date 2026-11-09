@@ -37,13 +37,13 @@ export default function StudentProfile() {
     phone: '',
     gender: 'PREFER_NOT_TO_SAY',
     dateOfBirth: '',
-    branch: 'CSE',
-    batchYear: new Date().getFullYear(),
+    branch: '',
+    batchYear: '',
     tenthPercentage: '',
     pucCgpa: '',
     btechCgpa: '',
-    activeBacklogs: 0,
-    backlogHistory: 0,
+    activeBacklogs: '',
+    backlogHistory: '',
     semesters: [],
     technicalSkills: [],
     nonTechnicalSkills: [],
@@ -82,9 +82,13 @@ export default function StudentProfile() {
         setProfile({
           ...p,
           studentId: p.studentId || user?.studentId || '',
-          tenthPercentage: p.tenthPercentage || '',
-          pucCgpa: p.pucCgpa || '',
-          btechCgpa: p.btechCgpa || '',
+          branch: p.branch || '',
+          batchYear: p.batchYear ?? '',
+          tenthPercentage: p.tenthPercentage ?? '',
+          pucCgpa: p.pucCgpa ?? '',
+          btechCgpa: p.btechCgpa ?? '',
+          activeBacklogs: p.activeBacklogs ?? '',
+          backlogHistory: p.backlogHistory ?? '',
           dateOfBirth: p.dateOfBirth ? p.dateOfBirth.substring(0, 10) : '',
         });
       } else {
@@ -106,12 +110,12 @@ export default function StudentProfile() {
     try {
       const payload = {
         ...profile,
-        tenthPercentage: profile.tenthPercentage ? Number(profile.tenthPercentage) : undefined,
-        pucCgpa: profile.pucCgpa ? Number(profile.pucCgpa) : undefined,
-        btechCgpa: profile.btechCgpa ? Number(profile.btechCgpa) : undefined,
-        activeBacklogs: Number(profile.activeBacklogs) || 0,
-        backlogHistory: Number(profile.backlogHistory) || 0,
-        batchYear: Number(profile.batchYear) || 2026,
+        tenthPercentage: profile.tenthPercentage === '' ? null : Number(profile.tenthPercentage),
+        pucCgpa: profile.pucCgpa === '' ? null : Number(profile.pucCgpa),
+        btechCgpa: profile.btechCgpa === '' ? null : Number(profile.btechCgpa),
+        activeBacklogs: profile.activeBacklogs === '' ? null : Number(profile.activeBacklogs),
+        backlogHistory: profile.backlogHistory === '' ? null : Number(profile.backlogHistory),
+        batchYear: profile.batchYear === '' ? null : Number(profile.batchYear),
       };
 
       const res = await fetch('/api/v1/students/profile', {
@@ -295,7 +299,7 @@ export default function StudentProfile() {
               </span>
             </div>
             <p className="text-xs text-slate-300 mt-1">
-              {profile.branch} Department • Batch {profile.batchYear} • RGUKT Ongole
+              {profile.branch || 'Branch not provided'} • Batch {profile.batchYear || 'not provided'} • RGUKT Ongole
             </p>
             <div className="flex items-center space-x-2 mt-2">
               <span
@@ -447,6 +451,7 @@ export default function StudentProfile() {
                 onChange={(e) => setProfile({ ...profile, branch: e.target.value })}
                 className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white font-medium focus:outline-none focus:border-emerald-500 transition"
               >
+                <option value="">Select branch</option>
                 {BRANCHES.map((b) => (
                   <option key={b} value={b}>{b}</option>
                 ))}
@@ -457,6 +462,8 @@ export default function StudentProfile() {
               <label className="block text-slate-400 mb-1">Academic Batch (Passing Year)</label>
               <input
                 type="number"
+                min="2000"
+                max="2200"
                 value={profile.batchYear}
                 onChange={(e) => setProfile({ ...profile, batchYear: e.target.value })}
                 className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-emerald-500 transition"
@@ -470,7 +477,6 @@ export default function StudentProfile() {
                 step="0.01"
                 min="0"
                 max="10"
-                required
                 value={profile.btechCgpa}
                 onChange={(e) => setProfile({ ...profile, btechCgpa: e.target.value })}
                 placeholder="e.g. 8.45"
@@ -816,4 +822,3 @@ export default function StudentProfile() {
     </div>
   );
 }
-

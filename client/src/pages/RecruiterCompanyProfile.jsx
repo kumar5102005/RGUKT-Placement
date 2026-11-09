@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext.jsx';
 import {
   Building2, MapPin, Mail, Phone, Globe, Linkedin, ExternalLink,
   CheckCircle2, Clock, XCircle, Save, Plus, AlertCircle, Loader2,
-  Briefcase, Edit3, Trash2, UserPlus, Key, Users, Check, X
+  Briefcase, Edit3, Trash2, UserPlus, Users, X
 } from 'lucide-react';
 
 const API_BASE = '/api/v1/drives';
@@ -56,7 +56,7 @@ function inputClass(err) {
 }
 
 export default function RecruiterCompanyProfile() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
 
   const [company, setCompany] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -84,24 +84,28 @@ export default function RecruiterCompanyProfile() {
   const [addingRecruiter, setAddingRecruiter] = useState(false);
   const [recruiterSuccess, setRecruiterSuccess] = useState('');
   const [recruiterError, setRecruiterError] = useState('');
-  const [tempCredentials, setTempCredentials] = useState(null);
-  const [copiedPass, setCopiedPass] = useState(false);
-
   const [newRecruiter, setNewRecruiter] = useState({
-    fullName: '',
     email: '',
     designation: 'Technical Recruiter',
     phone: '',
-    role: 'SECONDARY',
   });
+  const currentUserId = String(user?.id || user?._id || '');
+  const canManageRecruiters = Boolean(
+    company &&
+    (String(company.registeredBy) === currentUserId ||
+      company.recruiters?.some(
+        (recruiter) =>
+          String(recruiter.userId) === currentUserId &&
+          recruiter.role === 'PRIMARY' &&
+          recruiter.status !== 'INACTIVE'
+      ))
+  );
 
   const handleAddRecruiter = async (e) => {
     e.preventDefault();
     setAddingRecruiter(true);
     setRecruiterError('');
     setRecruiterSuccess('');
-    setTempCredentials(null);
-
     try {
       const res = await fetch(`${API_BASE}/my/recruiters`, {
         method: 'POST',
@@ -111,19 +115,11 @@ export default function RecruiterCompanyProfile() {
       const data = await res.json();
       if (res.ok) {
         setCompany(data.data.company);
-        setRecruiterSuccess(`Recruiter "${newRecruiter.fullName}" added successfully!`);
-        if (data.data.temporaryPassword) {
-          setTempCredentials({
-            email: newRecruiter.email,
-            password: data.data.temporaryPassword,
-          });
-        }
+        setRecruiterSuccess(`Recruiter "${data.data.recruiter.fullName}" added successfully.`);
         setNewRecruiter({
-          fullName: '',
           email: '',
           designation: 'Technical Recruiter',
           phone: '',
-          role: 'SECONDARY',
         });
       } else {
         setRecruiterError(data.error?.message || 'Failed to add recruiter.');
@@ -286,7 +282,7 @@ export default function RecruiterCompanyProfile() {
               : 'Manage your company profile and recruiter information.'}
           </p>
         </div>
-        {company && !editMode && (
+        {company && !editMode && canManageRecruiters && (
           <button
             onClick={() => setEditMode(true)}
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium border border-slate-700 transition"
@@ -380,7 +376,7 @@ export default function RecruiterCompanyProfile() {
                   <span>Company Recruitment Team</span>
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Authorize company team members to manage job postings, interview rounds, and candidate evaluations.
+                  Link existing company accounts authorized to manage job postings, interview rounds, and candidate evaluations.
                 </p>
               </div>
               <button
@@ -388,9 +384,9 @@ export default function RecruiterCompanyProfile() {
                 onClick={() => {
                   setRecruiterError('');
                   setRecruiterSuccess('');
-                  setTempCredentials(null);
                   setShowAddRecruiterModal(true);
                 }}
+                hidden={!canManageRecruiters}
                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow transition self-start sm:self-auto"
               >
                 <UserPlus className="w-4 h-4" />
@@ -412,43 +408,11 @@ export default function RecruiterCompanyProfile() {
               </div>
             )}
 
-            {tempCredentials && (
-              <div className="p-4 rounded-xl bg-gradient-to-r from-emerald-950/60 to-slate-900 border border-emerald-500/40 text-xs space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-emerald-300 flex items-center gap-1.5">
-                    <Key className="w-4 h-4" /> Temporary Login Credentials
-                  </span>
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(`Email: ${tempCredentials.email}\nPassword: ${tempCredentials.password}`);
-                      setCopiedPass(true);
-                      setTimeout(() => setCopiedPass(false), 2000);
-                    }}
-                    className="flex items-center gap-1 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
-                  >
-                    {copiedPass ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                    <span>{copiedPass ? 'Copied' : 'Copy Credentials'}</span>
-                  </button>
-                </div>
-                <p className="text-slate-300">
-                  Share these credentials with the team member. They can sign in directly at the login portal.
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 font-mono">
-                  <div className="bg-slate-900/80 px-3 py-1.5 rounded border border-slate-800 text-slate-300">
-                    <span className="text-slate-500">Email: </span>{tempCredentials.email}
-                  </div>
-                  <div className="bg-slate-900/80 px-3 py-1.5 rounded border border-slate-800 text-emerald-400 font-bold">
-                    <span className="text-slate-500">Password: </span>{tempCredentials.password}
-                  </div>
-                </div>
-              </div>
-            )}
-
             {(!company.recruiters || company.recruiters.length === 0) ? (
               <div className="p-6 text-center text-slate-400 text-xs bg-slate-900/30 rounded-lg border border-slate-800">
                 <Users className="w-8 h-8 text-slate-600 mx-auto mb-2" />
                 <p>No additional recruiters registered yet.</p>
-                <p className="text-slate-500 mt-1">Click "Add Recruiter" to invite team members.</p>
+                <p className="text-slate-500 mt-1">Link a recruiter account that has already been registered.</p>
               </div>
             ) : (
               <div className="space-y-2.5">
@@ -499,6 +463,7 @@ export default function RecruiterCompanyProfile() {
                       </div>
                     </div>
 
+                    {canManageRecruiters && r.role !== 'PRIMARY' && (
                     <div className="flex items-center gap-2 self-end sm:self-auto">
                       <button
                         type="button"
@@ -520,6 +485,7 @@ export default function RecruiterCompanyProfile() {
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -667,28 +633,14 @@ export default function RecruiterCompanyProfile() {
             <form onSubmit={handleAddRecruiter} className="space-y-4">
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-1">
-                  Full Name <span className="text-rose-400">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={newRecruiter.fullName}
-                  onChange={(e) => setNewRecruiter({ ...newRecruiter, fullName: e.target.value })}
-                  placeholder="e.g. Priya Sharma"
-                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
-                  Work Email Address <span className="text-rose-400">*</span>
+                  Registered Recruiter Email <span className="text-rose-400">*</span>
                 </label>
                 <input
                   type="email"
                   required
                   value={newRecruiter.email}
                   onChange={(e) => setNewRecruiter({ ...newRecruiter, email: e.target.value })}
-                  placeholder="e.g. priya.sharma@company.com"
+                  placeholder="Email used to create the recruiter account"
                   className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition"
                 />
               </div>
@@ -722,27 +674,9 @@ export default function RecruiterCompanyProfile() {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
-                  Role Permission Level
-                </label>
-                <select
-                  value={newRecruiter.role}
-                  onChange={(e) => setNewRecruiter({ ...newRecruiter, role: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:border-emerald-500 transition"
-                >
-                  <option value="SECONDARY">Secondary Recruiter (Manage Postings & Interviews)</option>
-                  <option value="PRIMARY">Primary Administrator (Full Company Access)</option>
-                </select>
-              </div>
-
               <div className="p-3 rounded-lg bg-slate-900/60 border border-slate-700/60 text-xs text-slate-400 space-y-1">
-                <p className="font-semibold text-slate-300 flex items-center gap-1">
-                  <Key className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Automated Credential Generation</span>
-                </p>
                 <p>
-                  A temporary password will be automatically generated. You can copy and share the credentials immediately upon addition.
+                  Recruiters must already have an active recruiter account. This only links that account to your company; no password is created or shared.
                 </p>
               </div>
 
@@ -770,4 +704,3 @@ export default function RecruiterCompanyProfile() {
     </div>
   );
 }
-

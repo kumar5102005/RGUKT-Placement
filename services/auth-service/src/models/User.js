@@ -39,6 +39,7 @@ const userSchema = new mongoose.Schema(
       lowercase: true,
       trim: true,
       sparse: true,
+      unique: true,
     },
     companyName: {
       type: String,
@@ -63,4 +64,3 @@ const userSchema = new mongoose.Schema(
 userSchema.index({ role: 1, status: 1 });
 
 export const User = mongoose.model("User", userSchema);
-

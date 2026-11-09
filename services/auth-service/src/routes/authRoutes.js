@@ -7,8 +7,9 @@ import {
   getMe,
   updateUserStatus,
   listUsers,
+  getInternalRecruiterByEmail,
 } from "../controllers/authController.js";
-import { authenticate } from "../middleware/auth.js";
+import { authenticate, requireInternalServiceKey } from "../middleware/auth.js";
 import { authorize } from "../middleware/rbac.js";
 import {
   validateRegister,
@@ -23,6 +24,7 @@ router.post("/register", validateRegister, register);
 router.post("/login", validateLogin, login);
 router.post("/refresh-token", refreshToken);
 router.post("/logout", logout);
+router.get("/internal/recruiters/:email", requireInternalServiceKey, getInternalRecruiterByEmail);
 
 // ── Protected Authenticated Routes ───────────────────────────────────────────
 router.get("/me", authenticate, getMe);
@@ -56,4 +58,3 @@ router.get("/users", authenticate, authorize("ADMIN"), listUsers);
 router.patch("/users/:id/status", authenticate, authorize("ADMIN"), validateStatusUpdate, updateUserStatus);
 
 export default router;
-

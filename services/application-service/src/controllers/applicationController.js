@@ -1,6 +1,13 @@
 import mongoose from 'mongoose';
+import { createHash } from 'node:crypto';
 import Application, { STANDARD_STAGES, PLACEMENT_STATUSES } from '../models/Application.js';
 import StageConfig from '../models/StageConfig.js';
+
+const COMPANY_DRIVE_SERVICE_URL =
+  process.env.COMPANY_DRIVE_SERVICE_URL || 'http://company-drive-service:4003';
+const NOTIFICATION_SERVICE_URL =
+  process.env.NOTIFICATION_SERVICE_URL || 'http://notification-service:4005';
+const SERVICE_API_KEY = process.env.SERVICE_API_KEY;
 
 function getUserId(user) {
   return user?.userId || user?.id || user?._id;
@@ -16,39 +23,15 @@ function getUserId(user) {
 export async function applyForJob(req, res) {
   try {
     const studentUserId = getUserId(req.user);
-    const {
-      jobId,
-      jobTitle,
-      companyId,
-      companyName,
-      studentData = {},
-      coverLetter,
-      eligibilityRules = {},
-      applicationDeadline,
-    } = req.body;
+    const { jobId, coverLetter = '' } = req.body;
 
-    if (!jobId || !jobTitle || !companyId || !companyName) {
+    if (!jobId || !mongoose.isValidObjectId(jobId)) {
       return res.status(400).json({
         success: false,
-        error: { code: 'MISSING_FIELDS', message: 'Job ID, Title, Company ID and Name are required.' },
+        error: { code: 'INVALID_JOB_ID', message: 'A valid job ID is required.' },
       });
     }
 
-    // 1. Check Deadline
-    if (applicationDeadline) {
-      const deadline = new Date(applicationDeadline);
-      if (Date.now() > deadline.getTime()) {
-        return res.status(400).json({
-          success: false,
-          error: {
-            code: 'DEADLINE_EXPIRED',
-            message: `The application deadline (${deadline.toLocaleDateString()}) has passed.`,
-          },
-        });
-      }
-    }
-
-    // 2. Prevent Duplicate Applications
     const existing = await Application.findOne({
       jobId,
       studentUserId,
@@ -65,51 +48,67 @@ export async function applyForJob(req, res) {
       });
     }
 
-    // 3. Academic Eligibility Validation
-    const studentCgpa = Number(studentData.btechCgpa || studentData.cgpa || 0);
-    const studentBranch = (studentData.branch || req.user.branch || '').toUpperCase();
-    const studentActiveBacklogs = Number(studentData.activeBacklogs || 0);
-    const studentBatch = Number(studentData.batchYear || req.user.batchYear || 2026);
-
-    const ineligibilityReasons = [];
-
-    if (eligibilityRules.minCgpa && studentCgpa < Number(eligibilityRules.minCgpa)) {
-      ineligibilityReasons.push(
-        `Your CGPA (${studentCgpa}) is below the required cutoff of ${eligibilityRules.minCgpa}.`
-      );
-    }
-
-    if (
-      Array.isArray(eligibilityRules.allowedBranches) &&
-      eligibilityRules.allowedBranches.length > 0 &&
-      !eligibilityRules.allowedBranches.includes(studentBranch)
-    ) {
-      ineligibilityReasons.push(
-        `Branch '${studentBranch || 'Unspecified'}' is not eligible. Allowed: ${eligibilityRules.allowedBranches.join(', ')}.`
-      );
-    }
-
-    if (
-      eligibilityRules.maxActiveBacklogs !== undefined &&
-      studentActiveBacklogs > Number(eligibilityRules.maxActiveBacklogs)
-    ) {
-      ineligibilityReasons.push(
-        `Active backlogs (${studentActiveBacklogs}) exceed maximum allowed (${eligibilityRules.maxActiveBacklogs}).`
-      );
-    }
-
-    if (ineligibilityReasons.length > 0) {
-      return res.status(422).json({
+    if (!SERVICE_API_KEY) {
+      return res.status(503).json({
         success: false,
-        error: {
-          code: 'INELIGIBLE_FOR_JOB',
-          message: 'You do not satisfy the academic eligibility requirements for this job.',
-          details: ineligibilityReasons,
+        error: { code: 'SERVICE_CONFIGURATION_ERROR', message: 'Eligibility service authorization is not configured.' },
+      });
+    }
+
+    const eligibilityResponse = await fetch(
+      `${COMPANY_DRIVE_SERVICE_URL}/api/v1/jobs/internal/${encodeURIComponent(jobId)}/check-eligibility`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-service-key': SERVICE_API_KEY,
+        },
+        body: JSON.stringify({ studentUserId }),
+      }
+    );
+    const eligibilityResult = await eligibilityResponse.json();
+    if (!eligibilityResponse.ok || !eligibilityResult.success) {
+      return res.status(eligibilityResponse.status || 502).json({
+        success: false,
+        error: eligibilityResult.error || {
+          code: 'ELIGIBILITY_SERVICE_ERROR',
+          message: 'Unable to verify job or student eligibility.',
         },
       });
     }
 
-    // 4. Create Application Record
+    const { job, student, evaluation } = eligibilityResult.data;
+    if (job.status !== 'ACTIVE') {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'JOB_NOT_OPEN', message: 'This job is not currently accepting applications.' },
+      });
+    }
+
+    const deadline = job.applicationDeadline ? new Date(job.applicationDeadline) : null;
+    if (!deadline || Number.isNaN(deadline.getTime()) || Date.now() > deadline.getTime()) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'DEADLINE_EXPIRED', message: 'The application deadline has passed or is invalid.' },
+      });
+    }
+
+    if (evaluation.status !== 'ELIGIBLE') {
+      return res.status(422).json({
+        success: false,
+        error: {
+          code: evaluation.status === 'INSUFFICIENT_DATA'
+            ? 'INSUFFICIENT_ELIGIBILITY_DATA'
+            : 'INELIGIBLE_FOR_JOB',
+          message: evaluation.status === 'INSUFFICIENT_DATA'
+            ? 'Complete the required academic information before applying.'
+            : 'You do not satisfy the academic eligibility requirements for this job.',
+          details: evaluation.reasons,
+          data: { evaluation },
+        },
+      });
+    }
+
     const initialHistory = [
       {
         stage: 'Applied',
@@ -120,21 +119,26 @@ export async function applyForJob(req, res) {
       },
     ];
 
+    const skills = [
+      ...(Array.isArray(student.technicalSkills) ? student.technicalSkills : []),
+      ...(Array.isArray(student.nonTechnicalSkills) ? student.nonTechnicalSkills : []),
+    ];
     const application = new Application({
       jobId,
-      jobTitle: jobTitle.trim(),
-      companyId,
-      companyName: companyName.trim(),
+      jobTitle: job.title,
+      companyId: job.companyId,
+      companyName: job.companyName,
       studentUserId,
-      studentId: (studentData.studentId || req.user.studentId || req.user.email?.split('@')[0] || '').toLowerCase().trim(),
-      studentName: studentData.studentName || req.user.fullName || 'Candidate',
-      studentEmail: req.user.email,
-      branch: studentBranch,
-      btechCgpa: studentCgpa,
-      activeBacklogs: studentActiveBacklogs,
-      batchYear: studentBatch,
-      resumeUrl: studentData.resumeUrl || '',
-      skills: Array.isArray(studentData.skills) ? studentData.skills : [],
+      studentId: student.studentId,
+      studentName: student.fullName,
+      studentEmail: student.email,
+      branch: student.branch,
+      btechCgpa: Number(student.btechCgpa),
+      activeBacklogs: Number(student.activeBacklogs),
+      batchYear: Number(student.batchYear),
+      resumeUrl: student.resumeUrl || '',
+      skills,
+      recruitmentRounds: job.selectionRounds || [],
       coverLetter: coverLetter || '',
       stage: 'Applied',
       finalPlacementStatus: 'PENDING',
@@ -158,6 +162,123 @@ export async function applyForJob(req, res) {
     return res.status(500).json({
       success: false,
       error: { code: 'INTERNAL_ERROR', message: err.message },
+    });
+  }
+}
+
+export async function syncJobRecruitmentRounds(req, res) {
+  try {
+    const { jobId } = req.params;
+    const { jobTitle, companyName, rounds } = req.body;
+    if (!mongoose.isValidObjectId(jobId) || !Array.isArray(rounds)) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_RECRUITMENT_ROUNDS', message: 'A valid job ID and rounds array are required.' },
+      });
+    }
+
+    const normalizedRounds = rounds.map((round) => ({
+      roundNumber: Number(round.roundNumber),
+      name: String(round.name || '').trim(),
+      description: round.description || '',
+      mode: round.mode || 'Online',
+      scheduledDate: round.scheduledDate || null,
+      durationMinutes: round.durationMinutes ?? null,
+      venueOrLink: round.venueOrLink || '',
+      status: round.status || 'PLANNED',
+    }));
+    const applications = await Application.find({ jobId }).select(
+      '_id studentUserId recruitmentRounds'
+    );
+    const pendingUpdates = applications.map((application) => {
+      const currentRounds = application.recruitmentRounds.map((round) => ({
+        roundNumber: round.roundNumber,
+        name: round.name,
+        description: round.description || '',
+        mode: round.mode,
+        scheduledDate: round.scheduledDate || null,
+        durationMinutes: round.durationMinutes ?? null,
+        venueOrLink: round.venueOrLink || '',
+        status: round.status || 'PLANNED',
+      }));
+      return {
+        application,
+        roundsChanged: JSON.stringify(currentRounds) !== JSON.stringify(normalizedRounds),
+      };
+    }).filter(({ roundsChanged }) => roundsChanged);
+
+    if (pendingUpdates.length > 0) {
+      if (!SERVICE_API_KEY) {
+        return res.status(503).json({
+          success: false,
+          error: {
+            code: 'SERVICE_CONFIGURATION_ERROR',
+            message: 'Notification service authorization is not configured.',
+          },
+        });
+      }
+
+      const batchId = createHash('sha256')
+        .update(`${jobId}:${JSON.stringify(normalizedRounds)}`)
+        .digest('hex');
+      for (const { application } of pendingUpdates) {
+        const eventId = createHash('sha256')
+          .update(`${batchId}:${application.studentUserId}`)
+          .digest('hex');
+        const notificationResponse = await fetch(
+          `${NOTIFICATION_SERVICE_URL}/api/v1/notifications/internal`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-service-key': SERVICE_API_KEY,
+            },
+            body: JSON.stringify({
+              eventId,
+              userId: application.studentUserId,
+              type: 'RECRUITMENT_ROUND_UPDATED',
+              title: 'Recruitment process updated',
+              message: `The recruitment rounds for ${jobTitle || 'a job you applied for'} have changed.`,
+              payload: { jobId, jobTitle, companyName, rounds: normalizedRounds },
+            }),
+          }
+        );
+        const notificationResult = await notificationResponse.json();
+        if (!notificationResponse.ok || !notificationResult.success) {
+          return res.status(notificationResponse.status || 502).json({
+            success: false,
+            error: notificationResult.error || {
+              code: 'NOTIFICATION_DELIVERY_FAILED',
+              message: 'Unable to notify all applicants about the recruitment round update.',
+            },
+          });
+        }
+      }
+    }
+
+    const updateResult = await Application.updateMany(
+      { _id: { $in: pendingUpdates.map(({ application }) => application._id) } },
+      {
+        $set: {
+          recruitmentRounds: normalizedRounds,
+          ...(jobTitle ? { jobTitle } : {}),
+          ...(companyName ? { companyName } : {}),
+        },
+      }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: 'Recruitment rounds synchronized with applications.',
+      data: {
+        updatedApplications: updateResult.modifiedCount,
+        notifiedApplicants: pendingUpdates.length,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: { code: 'RECRUITMENT_ROUND_SYNC_FAILED', message: error.message },
     });
   }
 }
@@ -665,4 +786,3 @@ export async function createCustomStage(req, res) {
     });
   }
 }
-

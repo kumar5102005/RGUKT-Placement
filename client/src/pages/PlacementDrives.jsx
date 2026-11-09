@@ -130,7 +130,7 @@ export default function PlacementDrives() {
       const res = await fetch(STUDENT_API, { headers: headers() });
       const data = await res.json();
       if (res.ok) {
-        setStudentProfile(data.data?.student || null);
+        setStudentProfile(data.data?.profile || null);
       }
     } catch {
       // Non-blocking
@@ -280,17 +280,7 @@ export default function PlacementDrives() {
       const res = await fetch(`${DRIVES_API}/${drive._id}/register`, {
         method: 'POST',
         headers: headers(),
-        body: JSON.stringify({
-          studentData: {
-            studentId: studentProfile.studentId || user?.studentId || '',
-            studentName: studentProfile.personalInfo?.fullName || user?.fullName || 'Student',
-            branch: studentProfile.branch || 'CSE',
-            btechCgpa: studentProfile.academics?.btechCgpa || 0,
-            activeBacklogs: studentProfile.academics?.activeBacklogs || 0,
-            batchYear: studentProfile.batchYear || 2026,
-            resumeUrl: studentProfile.resumeUrl || '',
-          },
-        }),
+        body: JSON.stringify({}),
       });
 
       const data = await res.json();
@@ -893,4 +883,3 @@ export default function PlacementDrives() {
     </div>
   );
 }
-

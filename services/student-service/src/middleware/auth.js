@@ -1,7 +1,7 @@
 import jwt from "jsonwebtoken";
 
-const JWT_SECRET = process.env.JWT_SECRET || "rgukt_super_secure_jwt_secret_token_2026_dev_key";
-const SERVICE_API_KEY = process.env.SERVICE_API_KEY || "rgukt_placement_internal_secret_key_2026";
+const JWT_SECRET = process.env.JWT_SECRET;
+const SERVICE_API_KEY = process.env.SERVICE_API_KEY;
 
 /**
  * Authenticate JWT tokens
@@ -77,4 +77,3 @@ export function requireInternalServiceKey(req, res, next) {
   }
   next();
 }
-

@@ -1,6 +1,53 @@
 import Company from '../models/Company.js';
 
+const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://auth-service:4001';
+const SERVICE_API_KEY = process.env.SERVICE_API_KEY;
+
 // ─── Helper ─────────────────────────────────────────────────────────────────
+
+function getUserId(user) {
+  return String(user?.userId || user?.id || user?._id || '');
+}
+
+async function findCompanyForManager(userId) {
+  return Company.findOne({
+    $or: [
+      { registeredBy: userId },
+      { recruiters: { $elemMatch: { userId, role: 'PRIMARY', status: 'ACTIVE' } } },
+    ],
+  });
+}
+
+async function findCompanyForMember(userId) {
+  return Company.findOne({
+    $or: [
+      { registeredBy: userId },
+      { recruiters: { $elemMatch: { userId, status: 'ACTIVE' } } },
+    ],
+  });
+}
+
+async function findAuthenticatedRecruiter(email) {
+  if (!SERVICE_API_KEY) {
+    const error = new Error('SERVICE_API_KEY is not configured for recruiter account verification.');
+    error.code = 'SERVICE_CONFIGURATION_ERROR';
+    error.statusCode = 503;
+    throw error;
+  }
+
+  const response = await fetch(
+    `${AUTH_SERVICE_URL}/api/v1/auth/internal/recruiters/${encodeURIComponent(email)}`,
+    { headers: { 'x-service-key': SERVICE_API_KEY } }
+  );
+  const result = await response.json();
+  if (!response.ok || !result.success || !result.data?.user) {
+    const error = new Error(result.error?.message || 'Unable to verify the recruiter account.');
+    error.code = result.error?.code || 'AUTH_SERVICE_ERROR';
+    error.statusCode = response.status || 502;
+    throw error;
+  }
+  return result.data.user;
+}
 
 function buildSearchQuery({ q, industry, verificationStatus, city, state, isActive }) {
   const query = {};
@@ -34,14 +81,14 @@ export async function registerCompany(req, res) {
     const userId = req.user.userId || req.user.id || req.user._id;
 
     // Prevent duplicate registration by same recruiter
-    const existing = await Company.findOne({ registeredBy: userId });
+    const existing = await findCompanyForMember(userId);
     if (existing) {
       return res.status(409).json({
         success: false,
         error: {
           code: 'COMPANY_ALREADY_REGISTERED',
           message:
-            'You have already registered a company. Update your existing company profile instead.',
+            'You are already associated with a company. Ask its primary recruiter to manage the company profile.',
         },
       });
     }
@@ -118,12 +165,12 @@ export async function registerCompany(req, res) {
 
 /**
  * GET /api/v1/drives/my
- * Get the company registered by the authenticated recruiter.
+ * Get the company associated with the authenticated recruiter.
  */
 export async function getOwnCompany(req, res) {
   try {
     const userId = req.user.userId || req.user.id || req.user._id;
-    const company = await Company.findOne({ registeredBy: userId });
+    const company = await findCompanyForMember(userId);
 
     if (!company) {
       return res.status(404).json({
@@ -421,18 +468,15 @@ export async function verifyCompany(req, res) {
   }
 }
 
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://auth-service:4001';
-
 /**
  * Helper to add a recruiter entry to a company document.
  */
-async function attachRecruiterToCompany(company, recruiterData) {
-  const { fullName, email, designation, phone, role, password } = recruiterData;
-  const cleanEmail = email.toLowerCase().trim();
+async function attachRecruiterToCompany(company, recruiter, recruiterData) {
+  const { designation, phone } = recruiterData;
+  const cleanEmail = recruiter.email.toLowerCase().trim();
 
-  // Check duplicate email
   const duplicate = company.recruiters.some(
-    (r) => r.email && r.email.toLowerCase() === cleanEmail
+    (r) => r.userId === recruiter.id || (r.email && r.email.toLowerCase() === cleanEmail)
   );
   if (duplicate) {
     const error = new Error('A recruiter with this work email is already added to this company.');
@@ -441,46 +485,21 @@ async function attachRecruiterToCompany(company, recruiterData) {
     throw error;
   }
 
-  // Generate temporary password
-  const tempPassword = password || `Recruiter@${Math.floor(100000 + Math.random() * 900000)}`;
-
-  let userId = recruiterData.userId || null;
-  try {
-    const authRes = await fetch(`${AUTH_SERVICE_URL}/api/v1/auth/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email: cleanEmail,
-        password: tempPassword,
-        fullName: fullName.trim(),
-        role: 'RECRUITER',
-        companyName: company.name,
-      }),
-    });
-    const authData = await authRes.json();
-    if (authData.success && authData.data?.user?.id) {
-      userId = authData.data.user.id;
-    }
-  } catch {
-    // Graceful fallback if auth service is not reachable directly
-  }
-
   const newEntry = {
-    userId: userId || `rec_${Date.now()}`,
-    fullName: fullName.trim(),
+    userId: recruiter.id,
+    fullName: recruiter.fullName,
     email: cleanEmail,
     designation: designation ? designation.trim() : 'Recruiter',
     phone: phone ? phone.trim() : '',
-    role: role || 'SECONDARY',
+    role: 'SECONDARY',
     status: 'ACTIVE',
-    temporaryPassword: tempPassword,
     addedAt: new Date(),
   };
 
   company.recruiters.push(newEntry);
   await company.save();
 
-  return { company, addedRecruiter: newEntry, temporaryPassword: tempPassword };
+  return { company, addedRecruiter: newEntry };
 }
 
 /**
@@ -490,15 +509,7 @@ async function attachRecruiterToCompany(company, recruiterData) {
 export async function addOwnCompanyRecruiter(req, res) {
   try {
     const userId = getUserId(req.user);
-    const userEmail = req.user.email?.toLowerCase();
-
-    const company = await Company.findOne({
-      $or: [
-        { registeredBy: userId },
-        { 'recruiters.userId': userId },
-        ...(userEmail ? [{ 'recruiters.email': userEmail }] : []),
-      ],
-    });
+    const company = await findCompanyForManager(userId);
 
     if (!company) {
       return res.status(404).json({
@@ -507,7 +518,28 @@ export async function addOwnCompanyRecruiter(req, res) {
       });
     }
 
-    const result = await attachRecruiterToCompany(company, req.body);
+    const recruiter = await findAuthenticatedRecruiter(String(req.body.email || '').trim().toLowerCase());
+    if (recruiter.id === userId) {
+      return res.status(409).json({
+        success: false,
+        error: { code: 'RECRUITER_ALREADY_EXISTS', message: 'You are already a member of this company.' },
+      });
+    }
+
+    const existingCompany = await Company.findOne({
+      $or: [
+        { registeredBy: recruiter.id },
+        { 'recruiters.userId': recruiter.id },
+      ],
+    });
+    if (existingCompany && existingCompany._id.toString() !== company._id.toString()) {
+      return res.status(409).json({
+        success: false,
+        error: { code: 'RECRUITER_ALREADY_ASSIGNED', message: 'This recruiter is already assigned to another company.' },
+      });
+    }
+
+    const result = await attachRecruiterToCompany(company, recruiter, req.body);
 
     return res.status(201).json({
       success: true,
@@ -515,19 +547,18 @@ export async function addOwnCompanyRecruiter(req, res) {
       data: {
         company: result.company,
         recruiter: result.addedRecruiter,
-        temporaryPassword: result.temporaryPassword,
       },
     });
   } catch (err) {
-    if (err.code === 'RECRUITER_ALREADY_EXISTS') {
-      return res.status(409).json({
+    if (['RECRUITER_ALREADY_EXISTS', 'RECRUITER_ACCOUNT_NOT_FOUND', 'RECRUITER_ALREADY_ASSIGNED'].includes(err.code)) {
+      return res.status(err.statusCode || 409).json({
         success: false,
         error: { code: err.code, message: err.message },
       });
     }
-    return res.status(500).json({
+    return res.status(err.statusCode || 500).json({
       success: false,
-      error: { code: 'INTERNAL_ERROR', message: err.message },
+      error: { code: err.code || 'INTERNAL_ERROR', message: err.message },
     });
   }
 }
@@ -539,13 +570,10 @@ export async function addOwnCompanyRecruiter(req, res) {
 export async function getOwnCompanyRecruiters(req, res) {
   try {
     const userId = getUserId(req.user);
-    const userEmail = req.user.email?.toLowerCase();
-
     const company = await Company.findOne({
       $or: [
         { registeredBy: userId },
-        { 'recruiters.userId': userId },
-        ...(userEmail ? [{ 'recruiters.email': userEmail }] : []),
+        { recruiters: { $elemMatch: { userId, status: 'ACTIVE' } } },
       ],
     }).lean();
 
@@ -581,17 +609,22 @@ export async function removeOwnCompanyRecruiter(req, res) {
     const userId = getUserId(req.user);
     const { recruiterId } = req.params;
 
-    const company = await Company.findOne({
-      $or: [
-        { registeredBy: userId },
-        { 'recruiters.userId': userId },
-      ],
-    });
+    const company = await findCompanyForManager(userId);
 
     if (!company) {
       return res.status(404).json({
         success: false,
         error: { code: 'COMPANY_NOT_FOUND', message: 'No company found for this recruiter.' },
+      });
+    }
+
+    const target = company.recruiters.find(
+      (r) => r._id?.toString() === recruiterId || r.userId === recruiterId || r.email === recruiterId
+    );
+    if (target?.role === 'PRIMARY') {
+      return res.status(403).json({
+        success: false,
+        error: { code: 'PRIMARY_RECRUITER_PROTECTED', message: 'The primary company recruiter cannot be removed.' },
       });
     }
 
@@ -632,12 +665,7 @@ export async function toggleOwnCompanyRecruiterStatus(req, res) {
     const { recruiterId } = req.params;
     const { status } = req.body;
 
-    const company = await Company.findOne({
-      $or: [
-        { registeredBy: userId },
-        { 'recruiters.userId': userId },
-      ],
-    });
+    const company = await findCompanyForManager(userId);
 
     if (!company) {
       return res.status(404).json({
@@ -657,7 +685,19 @@ export async function toggleOwnCompanyRecruiterStatus(req, res) {
       });
     }
 
-    recruiter.status = status || (recruiter.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE');
+    if (recruiter.role === 'PRIMARY') {
+      return res.status(403).json({
+        success: false,
+        error: { code: 'PRIMARY_RECRUITER_PROTECTED', message: 'The primary company recruiter status cannot be changed.' },
+      });
+    }
+    if (status !== 'ACTIVE' && status !== 'INACTIVE') {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_STATUS', message: 'Recruiter status must be ACTIVE or INACTIVE.' },
+      });
+    }
+    recruiter.status = status;
     await company.save();
 
     return res.status(200).json({
@@ -688,12 +728,10 @@ export async function addRecruiter(req, res) {
       });
     }
 
-    // Authorization check: Admin OR recruiter belonging to this company
+    // Company members with primary-management rights can only manage their own company.
     if (req.user.role !== 'ADMIN') {
-      const isMember =
-        company.registeredBy === req.user.id ||
-        company.recruiters.some((r) => r.userId === req.user.id || r.email === req.user.email);
-      if (!isMember) {
+      const managedCompany = await findCompanyForManager(getUserId(req.user));
+      if (!managedCompany || managedCompany._id.toString() !== company._id.toString()) {
         return res.status(403).json({
           success: false,
           error: { code: 'FORBIDDEN', message: 'You are not authorized to manage recruiters for this company.' },
@@ -701,7 +739,21 @@ export async function addRecruiter(req, res) {
       }
     }
 
-    const result = await attachRecruiterToCompany(company, req.body);
+    const recruiter = await findAuthenticatedRecruiter(String(req.body.email || '').trim().toLowerCase());
+    const existingCompany = await Company.findOne({
+      $or: [
+        { registeredBy: recruiter.id },
+        { 'recruiters.userId': recruiter.id },
+      ],
+    });
+    if (existingCompany && existingCompany._id.toString() !== company._id.toString()) {
+      return res.status(409).json({
+        success: false,
+        error: { code: 'RECRUITER_ALREADY_ASSIGNED', message: 'This recruiter is already assigned to another company.' },
+      });
+    }
+
+    const result = await attachRecruiterToCompany(company, recruiter, req.body);
 
     return res.status(200).json({
       success: true,
@@ -709,12 +761,11 @@ export async function addRecruiter(req, res) {
       data: {
         company: result.company,
         recruiter: result.addedRecruiter,
-        temporaryPassword: result.temporaryPassword,
       },
     });
   } catch (err) {
-    if (err.code === 'RECRUITER_ALREADY_EXISTS') {
-      return res.status(409).json({
+    if (['RECRUITER_ALREADY_EXISTS', 'RECRUITER_ACCOUNT_NOT_FOUND', 'RECRUITER_ALREADY_ASSIGNED'].includes(err.code)) {
+      return res.status(err.statusCode || 409).json({
         success: false,
         error: { code: err.code, message: err.message },
       });
@@ -725,9 +776,9 @@ export async function addRecruiter(req, res) {
         error: { code: 'INVALID_ID', message: 'Invalid company ID.' },
       });
     }
-    return res.status(500).json({
+    return res.status(err.statusCode || 500).json({
       success: false,
-      error: { code: 'INTERNAL_ERROR', message: err.message },
+      error: { code: err.code || 'INTERNAL_ERROR', message: err.message },
     });
   }
 }
@@ -750,15 +801,23 @@ export async function removeRecruiter(req, res) {
     }
 
     if (req.user.role !== 'ADMIN') {
-      const isMember =
-        company.registeredBy === req.user.id ||
-        company.recruiters.some((r) => r.userId === req.user.id || r.email === req.user.email);
-      if (!isMember) {
+      const managedCompany = await findCompanyForManager(getUserId(req.user));
+      if (!managedCompany || managedCompany._id.toString() !== company._id.toString()) {
         return res.status(403).json({
           success: false,
           error: { code: 'FORBIDDEN', message: 'You are not authorized to manage recruiters for this company.' },
         });
       }
+    }
+
+    const target = company.recruiters.find(
+      (r) => r._id?.toString() === recruiterId || r.userId === recruiterId || r.email === recruiterId
+    );
+    if (target?.role === 'PRIMARY' && req.user.role !== 'ADMIN') {
+      return res.status(403).json({
+        success: false,
+        error: { code: 'PRIMARY_RECRUITER_PROTECTED', message: 'The primary company recruiter cannot be removed.' },
+      });
     }
 
     const initialCount = company.recruiters.length;
@@ -837,4 +896,3 @@ export async function getInternalCompanyData(req, res) {
     });
   }
 }
-

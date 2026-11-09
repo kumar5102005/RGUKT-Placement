@@ -1,23 +1,43 @@
 import { StudentProfile } from "../models/StudentProfile.js";
 import { calculateProfileCompletion } from "../utils/completionCalculator.js";
 
+const COMPANY_DRIVE_SERVICE_URL =
+  process.env.COMPANY_DRIVE_SERVICE_URL || "http://company-drive-service:4003";
+const SERVICE_API_KEY = process.env.SERVICE_API_KEY;
+
+function getProfileConflict(error) {
+  if (error.code !== 11000) return null;
+  return error.keyPattern?.studentId
+    ? {
+        code: "STUDENT_ID_ALREADY_LINKED",
+        message: "This student ID is already linked to another profile.",
+      }
+    : {
+        code: "PROFILE_ALREADY_EXISTS",
+        message: "A profile is already linked to this authenticated account.",
+      };
+}
+
 /**
  * Safely extract and normalize the student's college ID without ever generating fake values.
  */
 function resolveStudentId(req) {
-  if (req.user?.studentId && String(req.user.studentId).trim()) {
-    return String(req.user.studentId).trim().toLowerCase();
-  }
-  if (req.body?.studentId && String(req.body.studentId).trim()) {
-    return String(req.body.studentId).trim().toLowerCase();
-  }
-  if (req.user?.email && req.user.email.includes("@")) {
-    const handle = req.user.email.split("@")[0].trim().toLowerCase();
-    if (/^o\d+/i.test(handle)) {
-      return handle;
+  const studentId = String(req.user?.studentId || "").trim().toLowerCase();
+  return /^o\d{6}$/.test(studentId) ? studentId : null;
+}
+
+async function findOwnProfile(req, studentId) {
+  const userId = String(req.user.id);
+  let profile = await StudentProfile.findOne({ userId });
+  if (!profile && studentId) {
+    profile = await StudentProfile.findOne({ studentId });
+    if (profile && profile.userId !== userId) {
+      const error = new Error("This student ID is already linked to another account.");
+      error.code = "STUDENT_ID_ALREADY_LINKED";
+      throw error;
     }
   }
-  return null;
+  return profile;
 }
 
 /**
@@ -27,48 +47,43 @@ function resolveStudentId(req) {
 export async function getOwnProfile(req, res) {
   try {
     const studentId = resolveStudentId(req);
-    const orQueries = [{ userId: req.user.id }];
-    if (studentId) {
-      orQueries.push({ studentId }, { studentId: studentId.toUpperCase() });
+    if (!studentId) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: "STUDENT_ID_REQUIRED",
+          message: "A valid RGUKT student ID is required in the authenticated account.",
+        },
+      });
     }
 
-    let profile = await StudentProfile.findOne({ $or: orQueries });
+    let profile = await findOwnProfile(req, studentId);
 
     // Automatically initialize a draft profile if not existing
     if (!profile) {
-      if (!studentId) {
-        return res.status(400).json({
-          success: false,
-          error: {
-            code: "STUDENT_ID_REQUIRED",
-            message: "Student ID is missing from user session. Please re-login with a valid student account.",
-          },
-        });
-      }
-
       profile = new StudentProfile({
         userId: req.user.id,
         studentId,
-        fullName: req.user.fullName || "RGUKT Student",
+        fullName: req.user.fullName || "Student",
         email: req.user.email,
-        branch: "CSE",
-        batchYear: new Date().getFullYear(),
-        btechCgpa: 0,
-        activeBacklogs: 0,
         verificationStatus: "PENDING",
       });
       profile.completionPercentage = calculateProfileCompletion(profile);
       await profile.save();
     } else {
       let changed = false;
-      // Sync studentId if it was previously initialized with a random/fake value or case mismatch
-      if (studentId && profile.studentId !== studentId) {
+      if (profile.studentId?.trim().toLowerCase() !== studentId && !/^o\d{6}$/i.test(profile.studentId || "")) {
         profile.studentId = studentId;
         changed = true;
       }
-      if (req.user.id && profile.userId !== req.user.id) {
-        profile.userId = req.user.id;
-        changed = true;
+      if (profile.studentId?.trim().toLowerCase() !== studentId) {
+        return res.status(409).json({
+          success: false,
+          error: {
+            code: "STUDENT_ID_MISMATCH",
+            message: "The student ID on this profile differs from the authenticated account. Contact TPO administration to resolve it.",
+          },
+        });
       }
       if (req.user.fullName && (!profile.fullName || profile.fullName === "RGUKT Student")) {
         profile.fullName = req.user.fullName;
@@ -98,6 +113,16 @@ export async function getOwnProfile(req, res) {
       },
     });
   } catch (error) {
+    if (error.code === "STUDENT_ID_ALREADY_LINKED") {
+      return res.status(409).json({
+        success: false,
+        error: { code: error.code, message: error.message },
+      });
+    }
+    const profileConflict = getProfileConflict(error);
+    if (profileConflict) {
+      return res.status(409).json({ success: false, error: profileConflict });
+    }
     return res.status(500).json({
       success: false,
       error: {
@@ -116,32 +141,35 @@ export async function getOwnProfile(req, res) {
 export async function updateOwnProfile(req, res) {
   try {
     const studentId = resolveStudentId(req);
-    const orQueries = [{ userId: req.user.id }];
-    if (studentId) {
-      orQueries.push({ studentId }, { studentId: studentId.toUpperCase() });
+    if (!studentId) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: "STUDENT_ID_REQUIRED",
+          message: "A valid RGUKT student ID is required in the authenticated account.",
+        },
+      });
     }
 
-    let profile = await StudentProfile.findOne({ $or: orQueries });
+    let profile = await findOwnProfile(req, studentId);
 
     if (!profile) {
-      if (!studentId) {
-        return res.status(400).json({
-          success: false,
-          error: {
-            code: "STUDENT_ID_REQUIRED",
-            message: "Student ID is required to create a student profile.",
-          },
-        });
-      }
-
       profile = new StudentProfile({
         userId: req.user.id,
         studentId,
         email: req.user.email,
         fullName: req.body.fullName || req.user.fullName,
       });
-    } else if (studentId && profile.studentId !== studentId) {
+    } else if (profile.studentId?.trim().toLowerCase() !== studentId && !/^o\d{6}$/i.test(profile.studentId || "")) {
       profile.studentId = studentId;
+    } else if (profile.studentId?.trim().toLowerCase() !== studentId) {
+      return res.status(409).json({
+        success: false,
+        error: {
+          code: "STUDENT_ID_MISMATCH",
+          message: "The student ID on this profile differs from the authenticated account. Contact TPO administration to resolve it.",
+        },
+      });
     }
 
     const {
@@ -173,13 +201,19 @@ export async function updateOwnProfile(req, res) {
     if (dateOfBirth !== undefined) profile.dateOfBirth = dateOfBirth;
 
     // Academic updates
-    if (branch) profile.branch = branch;
-    if (batchYear !== undefined) profile.batchYear = Number(batchYear);
-    if (tenthPercentage !== undefined) profile.tenthPercentage = Number(tenthPercentage);
-    if (pucCgpa !== undefined) profile.pucCgpa = Number(pucCgpa);
-    if (btechCgpa !== undefined) profile.btechCgpa = Number(btechCgpa);
-    if (activeBacklogs !== undefined) profile.activeBacklogs = Number(activeBacklogs);
-    if (backlogHistory !== undefined) profile.backlogHistory = Number(backlogHistory);
+    if (branch !== undefined) profile.branch = branch || undefined;
+    for (const [field, value] of Object.entries({
+      batchYear,
+      tenthPercentage,
+      pucCgpa,
+      btechCgpa,
+      activeBacklogs,
+      backlogHistory,
+    })) {
+      if (value !== undefined) {
+        profile[field] = value === null || value === '' ? undefined : Number(value);
+      }
+    }
 
     if (Array.isArray(semesters)) {
       profile.semesters = semesters.map((s) => ({
@@ -232,6 +266,16 @@ export async function updateOwnProfile(req, res) {
       },
     });
   } catch (error) {
+    if (error.code === "STUDENT_ID_ALREADY_LINKED") {
+      return res.status(409).json({
+        success: false,
+        error: { code: error.code, message: error.message },
+      });
+    }
+    const profileConflict = getProfileConflict(error);
+    if (profileConflict) {
+      return res.status(409).json({ success: false, error: profileConflict });
+    }
     return res.status(500).json({
       success: false,
       error: {
@@ -331,78 +375,77 @@ export async function uploadResumeFile(req, res) {
 export async function checkEligibility(req, res) {
   try {
     const { minCgpa, allowedBranches, maxBacklogs, eligibleBatchYear } = req.query;
-
-    const studentId = resolveStudentId(req);
-    const orQueries = [{ userId: req.user.id }];
-    if (studentId) {
-      orQueries.push({ studentId }, { studentId: studentId.toUpperCase() });
-    }
-
-    const profile = await StudentProfile.findOne({ $or: orQueries });
-
-    if (!profile) {
-      return res.status(404).json({
+    if (!SERVICE_API_KEY) {
+      return res.status(503).json({
         success: false,
         error: {
-          code: "PROFILE_NOT_FOUND",
-          message: "Please complete your student profile before verifying eligibility",
+          code: "SERVICE_CONFIGURATION_ERROR",
+          message: "Eligibility service authorization is not configured.",
         },
       });
     }
 
-    const reasons = [];
-    const checks = {
-      cgpaEligible: true,
-      branchEligible: true,
-      backlogsEligible: true,
-      batchEligible: true,
-      verifiedProfile: profile.verificationStatus === "VERIFIED",
-    };
-
-    if (minCgpa && profile.btechCgpa < Number(minCgpa)) {
-      checks.cgpaEligible = false;
-      reasons.push(`CGPA (${profile.btechCgpa}) is below required cutoff of ${minCgpa}`);
-    }
-
+    const eligibilityCriteria = {};
+    if (minCgpa !== undefined) eligibilityCriteria.minCgpa = minCgpa;
     if (allowedBranches) {
-      const branchList = allowedBranches.split(",").map((b) => b.trim().toUpperCase());
-      if (!branchList.includes(profile.branch.toUpperCase())) {
-        checks.branchEligible = false;
-        reasons.push(`Branch '${profile.branch}' is not among eligible departments: [${branchList.join(", ")}]`);
-      }
+      eligibilityCriteria.allowedBranches = allowedBranches.split(",").map((branch) => branch.trim());
+    }
+    if (maxBacklogs !== undefined) eligibilityCriteria.maxActiveBacklogs = maxBacklogs;
+
+    const response = await fetch(`${COMPANY_DRIVE_SERVICE_URL}/api/v1/jobs/internal/eligibility-check`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-service-key": SERVICE_API_KEY,
+      },
+      body: JSON.stringify({
+        studentUserId: req.user.id,
+        eligibilityCriteria,
+        eligibleBatchYear,
+      }),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.success) {
+      return res.status(response.status || 502).json({
+        success: false,
+        error: result.error || {
+          code: "ELIGIBILITY_SERVICE_ERROR",
+          message: "Eligibility service request failed.",
+        },
+      });
     }
 
-    if (maxBacklogs !== undefined && profile.activeBacklogs > Number(maxBacklogs)) {
-      checks.backlogsEligible = false;
-      reasons.push(`Active backlogs (${profile.activeBacklogs}) exceed maximum allowed (${maxBacklogs})`);
-    }
-
-    if (eligibleBatchYear && profile.batchYear !== Number(eligibleBatchYear)) {
-      checks.batchEligible = false;
-      reasons.push(`Academic batch year (${profile.batchYear}) does not match drive requirement (${eligibleBatchYear})`);
-    }
-
-    const isEligible =
-      checks.cgpaEligible &&
-      checks.branchEligible &&
-      checks.backlogsEligible &&
-      checks.batchEligible;
+    const { student, evaluation } = result.data;
+    const checks = {
+      cgpaEligible: evaluation.criteria.cgpa?.passed ?? null,
+      branchEligible: evaluation.criteria.branch?.passed ?? null,
+      backlogsEligible: evaluation.criteria.activeBacklogs?.passed ?? null,
+      batchEligible: evaluation.criteria.graduationYear?.passed ?? null,
+      verifiedProfile: student.verificationStatus === "VERIFIED",
+    };
 
     return res.status(200).json({
       success: true,
       data: {
-        isEligible,
+        isEligible: evaluation.isEligible,
+        status: evaluation.status,
+        eligible: evaluation.eligible,
+        evaluation,
         checks,
-        reasons,
+        reasons: evaluation.reasons,
         academicSnapshot: {
-          studentId: profile.studentId,
-          fullName: profile.fullName,
-          branch: profile.branch,
-          batchYear: profile.batchYear,
-          btechCgpa: profile.btechCgpa,
-          activeBacklogs: profile.activeBacklogs,
-          verificationStatus: profile.verificationStatus,
-          hasResume: Boolean(profile.resumeUrl),
+          studentId: student.studentId,
+          fullName: student.fullName,
+          branch: student.branch,
+          batchYear: student.batchYear,
+          btechCgpa: student.btechCgpa,
+          activeBacklogs: student.activeBacklogs,
+          backlogHistory: student.backlogHistory,
+          tenthPercentage: student.tenthPercentage,
+          pucCgpa: student.pucCgpa,
+          gender: student.gender,
+          verificationStatus: student.verificationStatus,
+          hasResume: Boolean(student.resumeUrl),
         },
       },
     });
@@ -412,7 +455,6 @@ export async function checkEligibility(req, res) {
       error: {
         code: "ELIGIBILITY_CHECK_FAILED",
         message: "Failed to evaluate academic eligibility",
-        details: error.message,
       },
     });
   }
@@ -625,8 +667,14 @@ export async function getInternalStudentData(req, res) {
         email: profile.email,
         branch: profile.branch,
         batchYear: profile.batchYear,
+        tenthPercentage: profile.tenthPercentage,
+        pucCgpa: profile.pucCgpa,
         btechCgpa: profile.btechCgpa,
         activeBacklogs: profile.activeBacklogs,
+        backlogHistory: profile.backlogHistory,
+        gender: profile.gender,
+        technicalSkills: profile.technicalSkills,
+        nonTechnicalSkills: profile.nonTechnicalSkills,
         resumeUrl: profile.resumeUrl,
         verificationStatus: profile.verificationStatus,
         placementStatus: profile.placementStatus,
@@ -639,4 +687,3 @@ export async function getInternalStudentData(req, res) {
     });
   }
 }
-

@@ -74,11 +74,11 @@ const driveRegistrationSchema = new mongoose.Schema(
     },
     activeBacklogs: {
       type: Number,
-      default: 0,
+      required: true,
     },
     batchYear: {
       type: Number,
-      default: 2026,
+      required: true,
     },
     resumeUrl: {
       type: String,
@@ -113,4 +113,3 @@ driveRegistrationSchema.index({ driveId: 1, status: 1 });
 
 const DriveRegistration = mongoose.model('DriveRegistration', driveRegistrationSchema);
 export default DriveRegistration;
-

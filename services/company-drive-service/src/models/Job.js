@@ -7,13 +7,19 @@ export const JOB_STATUSES = ['DRAFT', 'ACTIVE', 'PAUSED', 'CLOSED'];
 
 const roundSchema = new mongoose.Schema(
   {
-    roundNumber: { type: Number, required: true },
-    name: { type: String, required: true },
+    roundNumber: { type: Number, required: true, min: 1 },
+    name: { type: String, required: true, trim: true },
     description: { type: String, default: '' },
     mode: { type: String, enum: ['Online', 'In-Person', 'Hybrid'], default: 'Online' },
     scheduledDate: { type: Date, default: null },
-  },
-  { _id: false }
+    durationMinutes: { type: Number, min: 1, default: null },
+    venueOrLink: { type: String, default: '', trim: true },
+    status: {
+      type: String,
+      enum: ['PLANNED', 'SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'],
+      default: 'PLANNED',
+    },
+  }
 );
 
 const eligibilitySchema = new mongoose.Schema(
@@ -159,6 +165,10 @@ const jobSchema = new mongoose.Schema(
         { roundNumber: 3, name: 'HR & Cultural Fit Round', mode: 'In-Person' },
       ],
     },
+    roundsSyncPending: {
+      type: Boolean,
+      default: false,
+    },
     applicationDeadline: {
       type: Date,
       required: [true, 'Application deadline is required'],
@@ -225,4 +235,3 @@ jobSchema.pre('save', function (next) {
 
 const Job = mongoose.model('Job', jobSchema);
 export default Job;
-

@@ -8,7 +8,7 @@ const EXCHANGE = 'placement_hub_events';
 const DLX = `${EXCHANGE}.dlx`;
 
 async function initRabbitMQ() {
-  const rabbitUrl = process.env.RABBITMQ_URL || 'amqp://localhost';
+  const rabbitUrl = process.env.RABBITMQ_URL || process.env.LOCAL_RABBITMQ_URI || 'amqp://localhost';
   const connection = await amqp.connect(rabbitUrl);
   channel = await connection.createChannel();
 
@@ -110,4 +110,3 @@ async function sendEmail(to, subject, text) {
 }
 
 module.exports = { initRabbitMQ, startConsumers };
-
