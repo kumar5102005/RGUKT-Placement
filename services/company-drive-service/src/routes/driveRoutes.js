@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authenticate, authorize } from '../middleware/auth.js';
-import { validateDriveCreation, validateRoundSchedule } from '../middleware/driveValidation.js';
+import { validateDriveCreation, validateDriveUpdate, validateRoundSchedule } from '../middleware/driveValidation.js';
 import {
   createPlacementDrive,
   getPlacementDrives,
@@ -13,6 +13,7 @@ import {
   getMyDriveRegistrations,
   getDriveRegistrations,
   updateRegistrationStatus,
+  getDriveRegistrationResume,
 } from '../controllers/driveController.js';
 
 const router = Router();
@@ -43,6 +44,7 @@ router.put(
   '/placement-drives/:id',
   authenticate,
   authorize('ADMIN'),
+  validateDriveUpdate,
   updatePlacementDrive
 );
 
@@ -81,16 +83,21 @@ router.post(
 router.get(
   '/placement-drives/:id/registrations',
   authenticate,
-  authorize('ADMIN'),
+  authorize('ADMIN', 'RECRUITER'),
   getDriveRegistrations
+);
+
+router.get(
+  '/placement-drives/:id/registrations/:registrationId/resume',
+  authenticate,
+  getDriveRegistrationResume
 );
 
 router.patch(
   '/placement-drives/:id/registrations/:registrationId/status',
   authenticate,
-  authorize('ADMIN'),
+  authorize('RECRUITER'),
   updateRegistrationStatus
 );
 
 export default router;
-

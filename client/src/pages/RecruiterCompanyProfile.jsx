@@ -88,6 +88,7 @@ export default function RecruiterCompanyProfile() {
     email: '',
     designation: 'Technical Recruiter',
     phone: '',
+    canManageRecruitment: false,
   });
   const currentUserId = String(user?.id || user?._id || '');
   const canManageRecruiters = Boolean(
@@ -120,6 +121,7 @@ export default function RecruiterCompanyProfile() {
           email: '',
           designation: 'Technical Recruiter',
           phone: '',
+          canManageRecruitment: false,
         });
       } else {
         setRecruiterError(data.error?.message || 'Failed to add recruiter.');
@@ -171,6 +173,32 @@ export default function RecruiterCompanyProfile() {
       }
     } catch {
       setRecruiterError('Network error updating recruiter status.');
+    }
+  };
+
+  const handleToggleRecruiterPermission = async (recruiter, canManageRecruitment) => {
+    const recruiterId = recruiter._id || recruiter.userId;
+    try {
+      const res = await fetch(`${API_BASE}/my/recruiters/${recruiterId}/permissions`, {
+        method: 'PATCH',
+        headers: headers(),
+        body: JSON.stringify({ canManageRecruitment }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setCompany((previous) => ({
+          ...previous,
+          recruiters: previous.recruiters.map((entry) =>
+            entry._id === recruiter._id ? data.data.recruiter : entry
+          ),
+        }));
+        setRecruiterSuccess(`Recruitment decision permission ${canManageRecruitment ? 'granted' : 'removed'} for ${recruiter.fullName}.`);
+        setTimeout(() => setRecruiterSuccess(''), 4000);
+      } else {
+        setRecruiterError(data.error?.message || 'Failed to update recruiter permissions.');
+      }
+    } catch {
+      setRecruiterError('Network error updating recruiter permissions.');
     }
   };
 
@@ -461,6 +489,18 @@ export default function RecruiterCompanyProfile() {
                           Added: {new Date(r.addedAt || Date.now()).toLocaleDateString()}
                         </span>
                       </div>
+                      {r.role !== 'PRIMARY' && (
+                        <label className="inline-flex items-center gap-2 text-[11px] text-slate-400">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(r.canManageRecruitment)}
+                            disabled={!canManageRecruiters || r.status === 'INACTIVE'}
+                            onChange={(e) => handleToggleRecruiterPermission(r, e.target.checked)}
+                            className="accent-emerald-500"
+                          />
+                          Can manage recruitment decisions
+                        </label>
+                      )}
                     </div>
 
                     {canManageRecruiters && r.role !== 'PRIMARY' && (
@@ -676,9 +716,18 @@ export default function RecruiterCompanyProfile() {
 
               <div className="p-3 rounded-lg bg-slate-900/60 border border-slate-700/60 text-xs text-slate-400 space-y-1">
                 <p>
-                  Recruiters must already have an active recruiter account. This only links that account to your company; no password is created or shared.
+                  Recruiters must already have an active recruiter account. They start read-only; enable decision management only for trusted company members.
                 </p>
               </div>
+              <label className="flex items-start gap-2 text-xs text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={newRecruiter.canManageRecruitment}
+                  onChange={(e) => setNewRecruiter({ ...newRecruiter, canManageRecruitment: e.target.checked })}
+                  className="mt-0.5 accent-emerald-500"
+                />
+                <span>Allow this recruiter to manage application and placement-drive decisions.</span>
+              </label>
 
               <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-700">
                 <button

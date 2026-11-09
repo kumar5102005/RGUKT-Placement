@@ -1,5 +1,5 @@
-import React from 'react';
-import { BrowserRouter, Routes, Route, Link, useNavigate } from 'react-router-dom';
+import React, { useEffect, useRef } from 'react';
+import { BrowserRouter, Routes, Route, Link, NavLink, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 import Login from './pages/Login.jsx';
@@ -16,6 +16,8 @@ import JobDetails from './pages/JobDetails.jsx';
 import RecruiterJobManagement from './pages/RecruiterJobManagement.jsx';
 import PlacementDrives from './pages/PlacementDrives.jsx';
 import ApplicationTracker from './pages/ApplicationTracker.jsx';
+import AccountProfile from './pages/AccountProfile.jsx';
+import HeaderProfileMenu from './components/HeaderProfileMenu.jsx';
 import {
   Server,
   Database,
@@ -27,155 +29,206 @@ import {
   FileText,
   LogIn,
   UserPlus,
+  UserRound,
   LayoutDashboard,
-  LogOut,
   GraduationCap,
   Building2,
   Calendar,
 } from 'lucide-react';
 
 function Header() {
-  const { user, isAuthenticated, logout } = useAuth();
-  const navigate = useNavigate();
+  const { user, isAuthenticated } = useAuth();
+  const location = useLocation();
+  const navigationRef = useRef(null);
+  const navClass = ({ isActive }) =>
+    `flex shrink-0 items-center gap-1.5 px-2.5 py-1.5 rounded-md font-medium transition ${
+      isActive
+        ? 'bg-emerald-600 text-white'
+        : 'text-slate-200 hover:bg-slate-800 hover:text-emerald-400'
+    }`;
+
+  useEffect(() => {
+    const navigation = navigationRef.current;
+    const activeLink = navigation?.querySelector('[aria-current="page"]');
+    if (!navigation || !activeLink) return;
+    const navigationBounds = navigation.getBoundingClientRect();
+    const linkBounds = activeLink.getBoundingClientRect();
+    if (linkBounds.left < navigationBounds.left) {
+      navigation.scrollLeft -= navigationBounds.left - linkBounds.left;
+    } else if (linkBounds.right > navigationBounds.right) {
+      navigation.scrollLeft += linkBounds.right - navigationBounds.right;
+    }
+  }, [location.pathname]);
 
   return (
     <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-16 flex items-center gap-3">
         <Link to="/" className="flex items-center space-x-3">
           <div className="w-10 h-10 rounded-lg bg-emerald-600 flex items-center justify-center font-bold text-white shadow-lg shadow-emerald-500/20">
             RG
           </div>
-          <div>
+          <div className="hidden sm:block">
             <h1 className="font-semibold text-base sm:text-lg text-white leading-tight">RGUKT Ongole</h1>
             <p className="text-[11px] text-emerald-400">Placement Hub • Microservices Platform</p>
           </div>
         </Link>
-        <nav className="flex items-center space-x-1 sm:space-x-3 text-xs sm:text-sm">
-          <Link to="/" className="px-2.5 py-1.5 rounded-md hover:bg-slate-800 text-slate-300 hover:text-white transition">Overview</Link>
-          <Link to="/services" className="px-2.5 py-1.5 rounded-md hover:bg-slate-800 text-slate-300 hover:text-white transition">Services</Link>
+        <div className="ml-auto flex min-w-0 items-center gap-2">
+        <nav ref={navigationRef} aria-label="Main navigation" className="flex min-w-0 items-center gap-1 overflow-x-auto text-xs sm:gap-2 sm:text-sm">
+          <Link to="/" className="shrink-0 px-2.5 py-1.5 rounded-md hover:bg-slate-800 text-slate-300 hover:text-white transition">Overview</Link>
+          <Link to="/services" className="hidden shrink-0 px-2.5 py-1.5 rounded-md hover:bg-slate-800 text-slate-300 hover:text-white transition md:inline-block">Services</Link>
 
           {isAuthenticated ? (
-            <div className="flex items-center space-x-2 pl-2 border-l border-slate-700/60">
-              <Link
+            <>
+              <NavLink
                 to="/dashboard"
-                className="flex items-center space-x-1.5 px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white font-medium transition"
+                end
+                className={navClass}
+                aria-label="Dashboard"
               >
                 <LayoutDashboard className="w-3.5 h-3.5" />
-                <span>Dashboard</span>
-              </Link>
+                <span className="hidden xl:inline">Dashboard</span>
+              </NavLink>
 
-              <Link
+              <NavLink
                 to="/drives"
-                className="flex items-center space-x-1 px-2.5 py-1.5 rounded-md hover:bg-slate-800 text-slate-200 hover:text-emerald-400 font-medium transition"
+                className={navClass}
+                aria-label="Placement Drives"
+                title="Placement Drives"
               >
                 <Calendar className="w-4 h-4" />
-                <span>Placement Drives</span>
-              </Link>
+                <span className="hidden xl:inline">Placement Drives</span>
+              </NavLink>
 
-              <Link
+              <NavLink
                 to="/jobs"
-                className="flex items-center space-x-1 px-2.5 py-1.5 rounded-md hover:bg-slate-800 text-slate-200 hover:text-emerald-400 font-medium transition"
+                className={navClass}
+                aria-label="Jobs"
+                title="Jobs"
               >
                 <Briefcase className="w-4 h-4" />
-                <span>Jobs</span>
-              </Link>
+                <span className="hidden xl:inline">Jobs</span>
+              </NavLink>
 
-              <Link
+              <NavLink
                 to="/applications"
-                className="flex items-center space-x-1 px-2.5 py-1.5 rounded-md hover:bg-slate-800 text-slate-200 hover:text-emerald-400 font-medium transition"
+                className={navClass}
+                aria-label="Applications"
+                title="Applications"
               >
                 <FileText className="w-4 h-4" />
-                <span>Applications</span>
-              </Link>
+                <span className="hidden xl:inline">Applications</span>
+              </NavLink>
 
               {user?.role === 'STUDENT' && (
-                <Link
+                <NavLink
                   to="/profile"
-                  className="flex items-center space-x-1 px-2.5 py-1.5 rounded-md hover:bg-slate-800 text-slate-200 hover:text-emerald-400 font-medium transition"
+                  className={navClass}
+                  aria-label="My Profile"
+                  title="My Profile"
                 >
                   <GraduationCap className="w-4 h-4" />
-                  <span>My Profile</span>
-                </Link>
+                  <span className="hidden xl:inline">My Profile</span>
+                </NavLink>
               )}
 
               {user?.role === 'RECRUITER' && (
                 <>
-                  <Link
+                  <NavLink
                     to="/company/profile"
-                    className="flex items-center space-x-1 px-2.5 py-1.5 rounded-md hover:bg-slate-800 text-slate-200 hover:text-emerald-400 font-medium transition"
+                    className={navClass}
+                    aria-label="Company"
+                    title="Company"
                   >
                     <Building2 className="w-4 h-4" />
-                    <span>Company</span>
-                  </Link>
-                  <Link
+                    <span className="hidden xl:inline">Company</span>
+                  </NavLink>
+                  <NavLink
                     to="/recruiter/jobs"
-                    className="flex items-center space-x-1 px-2.5 py-1.5 rounded-md hover:bg-slate-800 text-slate-200 hover:text-emerald-400 font-medium transition"
+                    className={navClass}
+                    aria-label="Postings"
+                    title="Postings"
                   >
                     <Briefcase className="w-4 h-4" />
-                    <span>Postings</span>
-                  </Link>
+                    <span className="hidden xl:inline">Postings</span>
+                  </NavLink>
                 </>
               )}
 
               {user?.role === 'ADMIN' && (
                 <>
-                  <Link
+                  <NavLink
                     to="/recruiter/jobs"
-                    className="flex items-center space-x-1 px-2.5 py-1.5 rounded-md hover:bg-slate-800 text-slate-200 hover:text-emerald-400 font-medium transition"
+                    className={navClass}
+                    aria-label="Job Postings"
+                    title="Job Postings"
                   >
                     <Briefcase className="w-4 h-4" />
-                    <span>Drives</span>
-                  </Link>
-                  <Link
+                    <span className="hidden xl:inline">Job Postings</span>
+                  </NavLink>
+                  <NavLink
                     to="/admin/students"
-                    className="flex items-center space-x-1 px-2.5 py-1.5 rounded-md hover:bg-slate-800 text-slate-200 hover:text-emerald-400 font-medium transition"
+                    className={navClass}
+                    aria-label="Students"
+                    title="Students"
                   >
                     <GraduationCap className="w-4 h-4" />
-                    <span>Students</span>
-                  </Link>
-                  <Link
+                    <span className="hidden xl:inline">Students</span>
+                  </NavLink>
+                  <NavLink
                     to="/admin/companies"
-                    className="flex items-center space-x-1 px-2.5 py-1.5 rounded-md hover:bg-slate-800 text-slate-200 hover:text-emerald-400 font-medium transition"
+                    className={navClass}
+                    aria-label="Companies"
+                    title="Companies"
                   >
                     <Building2 className="w-4 h-4" />
-                    <span>Companies</span>
-                  </Link>
-                  <Link
+                    <span className="hidden xl:inline">Companies</span>
+                  </NavLink>
+                  <NavLink
                     to="/admin/users"
-                    className="px-2.5 py-1.5 rounded-md hover:bg-slate-800 text-slate-300 hover:text-white transition hidden sm:inline-block"
+                    className={navClass}
+                    aria-label="Users"
+                    title="Users"
                   >
-                    Users
-                  </Link>
+                    <Users className="w-4 h-4" />
+                    <span className="hidden xl:inline">Users</span>
+                  </NavLink>
+                  <NavLink
+                    to="/account"
+                    className={navClass}
+                    aria-label="My Profile"
+                    title="My Profile"
+                  >
+                    <UserRound className="w-4 h-4" />
+                    <span className="hidden xl:inline">My Profile</span>
+                  </NavLink>
                 </>
               )}
-
-              <button
-                onClick={() => { logout(); navigate('/login'); }}
-                title="Log Out"
-                className="p-1.5 rounded-md hover:bg-slate-800 text-slate-400 hover:text-rose-400 transition"
-              >
-                <LogOut className="w-4 h-4" />
-              </button>
-            </div>
-          ) : (
-            <div className="flex items-center space-x-2 pl-2 border-l border-slate-700/60">
-              <Link
-                to="/login"
-                className="flex items-center space-x-1 px-3 py-1.5 rounded-md hover:bg-slate-800 text-slate-200 hover:text-white transition"
-              >
-                <LogIn className="w-3.5 h-3.5" />
-                <span>Sign In</span>
-              </Link>
-              <Link
-                to="/register"
-                className="flex items-center space-x-1 px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white font-medium shadow transition"
-              >
-                <UserPlus className="w-3.5 h-3.5" />
-                <span>Register</span>
-              </Link>
-            </div>
-          )}
+            </>
+          ) : null}
         </nav>
+        {isAuthenticated ? (
+          <div className="shrink-0 border-l border-slate-700/60 pl-2 sm:pl-3">
+            <HeaderProfileMenu />
+          </div>
+        ) : (
+          <div className="flex shrink-0 items-center space-x-2 pl-2 border-l border-slate-700/60">
+            <Link
+              to="/login"
+              className="flex items-center space-x-1 px-2 sm:px-3 py-1.5 rounded-md hover:bg-slate-800 text-slate-200 hover:text-white transition"
+            >
+              <LogIn className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Sign In</span>
+            </Link>
+            <Link
+              to="/register"
+              className="flex items-center space-x-1 px-2 sm:px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white font-medium shadow transition"
+            >
+              <UserPlus className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Register</span>
+            </Link>
+          </div>
+        )}
+        </div>
       </div>
     </header>
   );
@@ -388,6 +441,14 @@ export default function App() {
                 element={
                   <ProtectedRoute allowedRoles={['STUDENT', 'ADMIN']}>
                     <StudentProfile />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/account"
+                element={
+                  <ProtectedRoute allowedRoles={['ADMIN']}>
+                    <AccountProfile />
                   </ProtectedRoute>
                 }
               />

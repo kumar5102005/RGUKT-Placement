@@ -2,7 +2,7 @@ import multer from "multer";
 import path from "node:path";
 import fs from "node:fs";
 
-const uploadDir = path.resolve("uploads/resumes");
+const uploadDir = path.resolve(process.env.RESUME_UPLOAD_DIR || "uploads/resumes");
 
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
@@ -44,4 +44,3 @@ export const uploadResume = multer({
   },
   fileFilter,
 });
-

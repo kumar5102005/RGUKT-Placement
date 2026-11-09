@@ -1,9 +1,78 @@
 import { StudentProfile } from "../models/StudentProfile.js";
 import { calculateProfileCompletion } from "../utils/completionCalculator.js";
+import fs from "node:fs";
+import path from "node:path";
 
 const COMPANY_DRIVE_SERVICE_URL =
   process.env.COMPANY_DRIVE_SERVICE_URL || "http://company-drive-service:4003";
 const SERVICE_API_KEY = process.env.SERVICE_API_KEY;
+const RESUME_UPLOAD_DIR = path.resolve(process.env.RESUME_UPLOAD_DIR || "uploads/resumes");
+
+function findProfileByIdentifier(identifier) {
+  const cleanId = String(identifier || "").trim();
+  const queries = [
+    { studentId: cleanId.toLowerCase() },
+    { studentId: cleanId.toUpperCase() },
+  ];
+  if (/^[0-9a-fA-F]{24}$/.test(cleanId)) queries.unshift({ _id: cleanId });
+  return StudentProfile.findOne({ $or: queries });
+}
+
+async function sendResume(res, profile, requestedFileName) {
+  const fileName = requestedFileName || profile.resumeFileName;
+  const versions = [
+    ...(profile.resumeVersions || []),
+    ...(profile.resumeFileName
+      ? [{
+          fileName: profile.resumeFileName,
+          originalName: profile.resumeOriginalName || profile.resumeFileName,
+          mimeType: profile.resumeMimeType || "application/octet-stream",
+        }]
+      : []),
+  ];
+  const version = versions.find((candidate) => candidate.fileName === fileName);
+  if (!version || !fileName || path.basename(fileName) !== fileName) {
+    return res.status(404).json({
+      success: false,
+      error: { code: "RESUME_NOT_FOUND", message: "Resume file was not found." },
+    });
+  }
+
+  const absolutePath = path.resolve(RESUME_UPLOAD_DIR, fileName);
+  if (path.dirname(absolutePath) !== RESUME_UPLOAD_DIR) {
+    return res.status(404).json({
+      success: false,
+      error: { code: "RESUME_NOT_FOUND", message: "Resume file was not found." },
+    });
+  }
+
+  try {
+    const fileStat = await fs.promises.stat(absolutePath);
+    if (!fileStat.isFile()) {
+      return res.status(404).json({
+        success: false,
+        error: { code: "RESUME_NOT_FOUND", message: "Resume file was not found." },
+      });
+    }
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      return res.status(404).json({
+        success: false,
+        error: { code: "RESUME_NOT_FOUND", message: "Resume file was not found." },
+      });
+    }
+    throw error;
+  }
+
+  const contentType = version.mimeType || "application/octet-stream";
+  res.set({
+    "Content-Type": contentType,
+    "Content-Disposition": `${contentType === "application/pdf" ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(version.originalName || fileName)}`,
+    "X-Content-Type-Options": "nosniff",
+    "Cache-Control": "private, no-store",
+  });
+  return fs.createReadStream(absolutePath).pipe(res);
+}
 
 function getProfileConflict(error) {
   if (error.code !== 11000) return null;
@@ -336,6 +405,17 @@ export async function uploadResumeFile(req, res) {
 
     const fileRelativePath = `/uploads/resumes/${req.file.filename}`;
 
+    if (
+      profile.resumeFileName &&
+      !(profile.resumeVersions || []).some((version) => version.fileName === profile.resumeFileName)
+    ) {
+      profile.resumeVersions.push({
+        fileName: profile.resumeFileName,
+        originalName: profile.resumeOriginalName || profile.resumeFileName,
+        mimeType: profile.resumeMimeType || "application/octet-stream",
+        uploadedAt: profile.resumeUploadedAt || profile.updatedAt || new Date(),
+      });
+    }
     profile.resumeUrl = fileRelativePath;
     profile.resumeFileName = req.file.filename;
     profile.resumeOriginalName = req.file.originalname;
@@ -350,7 +430,7 @@ export async function uploadResumeFile(req, res) {
       success: true,
       message: "Resume uploaded successfully",
       data: {
-        resumeUrl: fileRelativePath,
+        resumeUrl: `/api/v1/students/${encodeURIComponent(profile.studentId)}/resume`,
         originalName: req.file.originalname,
         sizeBytes: req.file.size,
         completionPercentage: profile.completionPercentage,
@@ -364,6 +444,66 @@ export async function uploadResumeFile(req, res) {
         message: "Failed to process resume file upload",
         details: error.message,
       },
+    });
+  }
+}
+
+export async function getOwnResume(req, res) {
+  try {
+    const profile = await StudentProfile.findOne({ userId: String(req.user.id) });
+    if (!profile) {
+      return res.status(404).json({
+        success: false,
+        error: { code: "STUDENT_NOT_FOUND", message: "Student profile was not found." },
+      });
+    }
+    return await sendResume(res, profile);
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: { code: "RESUME_READ_FAILED", message: "Unable to retrieve resume." },
+    });
+  }
+}
+
+export async function getStudentResume(req, res) {
+  try {
+    const profile = await findProfileByIdentifier(req.params.id);
+    if (!profile) {
+      return res.status(404).json({
+        success: false,
+        error: { code: "STUDENT_NOT_FOUND", message: "Student record was not found." },
+      });
+    }
+    if (req.user.role !== "ADMIN" && String(profile.userId) !== String(req.user.id)) {
+      return res.status(403).json({
+        success: false,
+        error: { code: "FORBIDDEN", message: "Access denied to this resume." },
+      });
+    }
+    return await sendResume(res, profile);
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: { code: "RESUME_READ_FAILED", message: "Unable to retrieve resume." },
+    });
+  }
+}
+
+export async function getInternalResume(req, res) {
+  try {
+    const profile = await StudentProfile.findOne({ userId: String(req.params.id) });
+    if (!profile) {
+      return res.status(404).json({
+        success: false,
+        error: { code: "STUDENT_NOT_FOUND", message: "Student record was not found." },
+      });
+    }
+    return await sendResume(res, profile, req.query.fileName ? String(req.query.fileName) : undefined);
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: { code: "RESUME_READ_FAILED", message: "Unable to retrieve resume." },
     });
   }
 }
@@ -596,13 +736,13 @@ export async function verifyStudentProfile(req, res) {
     }
 
     const cleanId = String(id).trim();
-    const profile = await StudentProfile.findOne({
-      $or: [
-        { _id: cleanId.match(/^[0-9a-fA-F]{24}$/) ? cleanId : null },
-        { studentId: cleanId.toLowerCase() },
-        { studentId: cleanId.toUpperCase() },
-      ],
-    });
+    if (!/^[0-9a-fA-F]{24}$/.test(cleanId)) {
+      return res.status(404).json({
+        success: false,
+        error: { code: "STUDENT_NOT_FOUND", message: "Student record was not found" },
+      });
+    }
+    const profile = await StudentProfile.findById(cleanId);
 
     if (!profile) {
       return res.status(404).json({
@@ -612,7 +752,7 @@ export async function verifyStudentProfile(req, res) {
     }
 
     profile.verificationStatus = verificationStatus;
-    profile.verifiedBy = req.user?.email || "TPO Administrator";
+    profile.verifiedBy = String(req.user?.id || req.user?._id || "");
     profile.verifiedAt = new Date();
     if (verificationNotes !== undefined) profile.verificationNotes = verificationNotes;
 
@@ -675,7 +815,12 @@ export async function getInternalStudentData(req, res) {
         gender: profile.gender,
         technicalSkills: profile.technicalSkills,
         nonTechnicalSkills: profile.nonTechnicalSkills,
-        resumeUrl: profile.resumeUrl,
+        resumeUrl: profile.resumeFileName
+          ? `/api/v1/students/${encodeURIComponent(profile.studentId)}/resume`
+          : "",
+        resumeFileName: profile.resumeFileName || "",
+        resumeOriginalName: profile.resumeOriginalName || "",
+        resumeMimeType: profile.resumeMimeType || "",
         verificationStatus: profile.verificationStatus,
         placementStatus: profile.placementStatus,
       },

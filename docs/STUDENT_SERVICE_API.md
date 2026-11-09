@@ -122,13 +122,17 @@ The service computes a dynamic completion score (0 - 100%) every time a profile 
     "success": true,
     "message": "Resume uploaded successfully",
     "data": {
-      "resumeUrl": "/uploads/resumes/O180555-1731000000000-123456.pdf",
+      "resumeUrl": "/api/v1/students/O180555/resume",
       "originalName": "SaiKumar_Resume_2026.pdf",
       "sizeBytes": 245120,
       "completionPercentage": 100
     }
   }
   ```
+- The returned URL is a private authenticated route, not a public static file URL.
+- `GET /api/v1/students/profile/resume` lets the authenticated student download their current resume. `GET /api/v1/students/:profileId/resume` is available to the owning student or an admin; `profileId` may be the profile Mongo `_id` or student ID.
+- Internal services may retrieve a resume version with `GET /api/v1/students/internal/:userId/resume?fileName=<stored-file-name>` and the `x-service-key` header. This endpoint is not for browser clients.
+- Docker deployments persist uploaded files in the `student_uploads` volume. Before replacing a pre-volume Student Service container, copy any existing `/app/uploads/resumes` files into that volume to retain legacy uploads.
 
 ---
 
@@ -198,6 +202,8 @@ The service computes a dynamic completion score (0 - 100%) every time a profile 
 ### F. Verify Student Profile (Admin Only)
 `PATCH /api/v1/students/:id/verify`
 
+`:id` is the Mongo `_id` returned with the student profile/search result, not the student's university ID or auth user ID.
+
 - **Access**: `ADMIN` (Bearer JWT)
 - **Request Body**:
   ```json
@@ -234,7 +240,7 @@ The service computes a dynamic completion score (0 - 100%) every time a profile 
       "gender": "FEMALE",
       "technicalSkills": ["Java", "SQL"],
       "nonTechnicalSkills": ["Communication"],
-      "resumeUrl": "/uploads/resumes/O180555-12345.pdf",
+      "resumeUrl": "/api/v1/students/O180555/resume",
       "verificationStatus": "VERIFIED",
       "placementStatus": "NOT_PLACED"
     }

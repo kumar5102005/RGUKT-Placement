@@ -22,6 +22,7 @@ const WORKFLOW_STAGES = [
 
 export default function ApplicationTracker() {
   const { user, token, apiFetch } = useAuth();
+  const canManageDecisions = user?.role === 'RECRUITER';
 
   const [applications, setApplications] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -157,7 +158,7 @@ export default function ApplicationTracker() {
       roundNumber: (app.interviews?.length || 0) + 1,
       scheduledAt: defaultDate,
     }));
-    setActiveModalTab('stage');
+    setActiveModalTab(canManageDecisions ? 'stage' : 'history');
   }
 
   // Action: Update Stage
@@ -445,6 +446,16 @@ export default function ApplicationTracker() {
                 </div>
 
                 <div className="flex items-center gap-3">
+                  {app.resumeFileName && (
+                    <a
+                      href={`${APPLICATIONS_API}/${app._id}/resume`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-xs text-emerald-400 hover:text-emerald-300"
+                    >
+                      <FileText className="w-3.5 h-3.5" /> View Resume
+                    </a>
+                  )}
                   <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${getStageColor(app.stage)}`}>
                     Stage: {app.stage}
                   </span>
@@ -572,6 +583,7 @@ export default function ApplicationTracker() {
                       <div key={i} className="flex items-center gap-2">
                         <span className="text-slate-500">{new Date(h.changedAt).toLocaleDateString()}:</span>
                         <span className="text-slate-300 font-medium">{h.stage}</span>
+                        <span className="text-slate-500">{h.changedByRole || 'SYSTEM'}</span>
                         {h.comments && <span className="text-slate-500 truncate">- {h.comments}</span>}
                       </div>
                     ))}
@@ -633,13 +645,25 @@ export default function ApplicationTracker() {
                     </td>
 
                     <td className="py-3 px-4 text-right">
-                      <button
-                        onClick={() => handleOpenAppModal(app)}
-                        className="px-3 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 font-semibold text-xs border border-emerald-500/30 transition inline-flex items-center gap-1"
-                      >
-                        <UserCheck className="w-3.5 h-3.5" />
-                        <span>Manage</span>
-                      </button>
+                      <div className="inline-flex items-center gap-3">
+                        {app.resumeFileName && (
+                          <a
+                            href={`${APPLICATIONS_API}/${app._id}/resume`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-emerald-400 hover:text-emerald-300 inline-flex items-center gap-1"
+                          >
+                            <FileText className="w-3.5 h-3.5" /> Resume
+                          </a>
+                        )}
+                        <button
+                          onClick={() => handleOpenAppModal(app)}
+                          className="px-3 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 font-semibold text-xs border border-emerald-500/30 transition inline-flex items-center gap-1"
+                        >
+                          {canManageDecisions ? <UserCheck className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                          <span>{canManageDecisions ? 'Manage' : 'Review'}</span>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -676,38 +700,38 @@ export default function ApplicationTracker() {
 
             {/* Modal Navigation Tabs */}
             <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 pb-2 text-xs font-semibold">
-              <button
+              {canManageDecisions && <button
                 onClick={() => setActiveModalTab('stage')}
                 className={`px-3 py-1.5 rounded-lg transition ${
                   activeModalTab === 'stage' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'
                 }`}
               >
                 Workflow Stage
-              </button>
-              <button
+              </button>}
+              {canManageDecisions && <button
                 onClick={() => setActiveModalTab('schedule')}
                 className={`px-3 py-1.5 rounded-lg transition ${
                   activeModalTab === 'schedule' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'
                 }`}
               >
                 Schedule Interview
-              </button>
-              <button
+              </button>}
+              {canManageDecisions && <button
                 onClick={() => setActiveModalTab('evaluate')}
                 className={`px-3 py-1.5 rounded-lg transition ${
                   activeModalTab === 'evaluate' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'
                 }`}
               >
                 Evaluate Round
-              </button>
-              <button
+              </button>}
+              {canManageDecisions && <button
                 onClick={() => setActiveModalTab('offer')}
                 className={`px-3 py-1.5 rounded-lg transition ${
                   activeModalTab === 'offer' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'
                 }`}
               >
                 Placement Offer
-              </button>
+              </button>}
               <button
                 onClick={() => setActiveModalTab('history')}
                 className={`px-3 py-1.5 rounded-lg transition ${
@@ -719,7 +743,7 @@ export default function ApplicationTracker() {
             </div>
 
             {/* Modal Body Based on Tab */}
-            {activeModalTab === 'stage' && (
+            {canManageDecisions && activeModalTab === 'stage' && (
               <form onSubmit={handleUpdateStage} className="space-y-4 text-xs">
                 <div>
                   <label className="block text-slate-400 font-medium mb-1">Select Workflow Stage *</label>
@@ -758,7 +782,7 @@ export default function ApplicationTracker() {
               </form>
             )}
 
-            {activeModalTab === 'schedule' && (
+            {canManageDecisions && activeModalTab === 'schedule' && (
               <form onSubmit={handleScheduleInterview} className="space-y-4 text-xs">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
@@ -845,7 +869,7 @@ export default function ApplicationTracker() {
               </form>
             )}
 
-            {activeModalTab === 'evaluate' && (
+            {canManageDecisions && activeModalTab === 'evaluate' && (
               <form onSubmit={handleSubmitEvaluation} className="space-y-4 text-xs">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
@@ -925,7 +949,7 @@ export default function ApplicationTracker() {
               </form>
             )}
 
-            {activeModalTab === 'offer' && (
+            {canManageDecisions && activeModalTab === 'offer' && (
               <form onSubmit={handleUpdateOffer} className="space-y-4 text-xs">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
@@ -1012,4 +1036,3 @@ export default function ApplicationTracker() {
     </div>
   );
 }
-

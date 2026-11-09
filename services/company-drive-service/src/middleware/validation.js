@@ -179,7 +179,7 @@ export function validateVerification(req, res, next) {
  */
 export function validateAddRecruiter(req, res, next) {
   const errors = [];
-  const { email, designation, phone, role, password } = req.body;
+  const { email, designation, phone, role, password, canManageRecruitment } = req.body;
 
   if (!email || typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
     errors.push({ field: 'email', message: 'A valid recruiter work email is required' });
@@ -199,6 +199,10 @@ export function validateAddRecruiter(req, res, next) {
 
   if (password !== undefined) {
     errors.push({ field: 'password', message: 'Passwords must be set by the recruiter through the Auth Service' });
+  }
+
+  if (canManageRecruitment !== undefined && typeof canManageRecruitment !== 'boolean') {
+    errors.push({ field: 'canManageRecruitment', message: 'Recruitment permission must be a boolean' });
   }
 
   if (errors.length > 0) {

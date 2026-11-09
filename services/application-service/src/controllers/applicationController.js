@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { Readable } from 'node:stream';
 import { createHash } from 'node:crypto';
 import Application, { STANDARD_STAGES, PLACEMENT_STATUSES } from '../models/Application.js';
 import StageConfig from '../models/StageConfig.js';
@@ -8,9 +9,141 @@ const COMPANY_DRIVE_SERVICE_URL =
 const NOTIFICATION_SERVICE_URL =
   process.env.NOTIFICATION_SERVICE_URL || 'http://notification-service:4005';
 const SERVICE_API_KEY = process.env.SERVICE_API_KEY;
+const STUDENT_SERVICE_URL = process.env.STUDENT_SERVICE_URL || 'http://student-service:4002';
 
 function getUserId(user) {
   return user?.userId || user?.id || user?._id;
+}
+
+async function getRecruiterCompanyId(userId) {
+  if (!SERVICE_API_KEY) {
+    const error = new Error('SERVICE_API_KEY is not configured for company membership checks.');
+    error.statusCode = 503;
+    error.code = 'SERVICE_CONFIGURATION_ERROR';
+    throw error;
+  }
+  const response = await fetch(
+    `${COMPANY_DRIVE_SERVICE_URL}/api/v1/jobs/internal/recruiters/${encodeURIComponent(userId)}/company`,
+    { headers: { 'x-service-key': SERVICE_API_KEY } }
+  );
+  const result = await response.json();
+  if (!response.ok || !result.success || !result.data?.companyId) {
+    const error = new Error(result.error?.message || 'Unable to verify recruiter company membership.');
+    error.statusCode = response.status || 502;
+    error.code = result.error?.code || 'COMPANY_MEMBERSHIP_CHECK_FAILED';
+    throw error;
+  }
+  return String(result.data.companyId);
+}
+
+async function getApplicationRecruitmentAccess(application, userId) {
+  if (!SERVICE_API_KEY) {
+    const error = new Error('SERVICE_API_KEY is not configured for company access checks.');
+    error.statusCode = 503;
+    error.code = 'SERVICE_CONFIGURATION_ERROR';
+    throw error;
+  }
+  const response = await fetch(
+    `${COMPANY_DRIVE_SERVICE_URL}/api/v1/jobs/internal/${encodeURIComponent(application.jobId)}/recruitment-access/${encodeURIComponent(userId)}`,
+    { headers: { 'x-service-key': SERVICE_API_KEY } }
+  );
+  const result = await response.json();
+  if (!response.ok || !result.success) {
+    const error = new Error(result.error?.message || 'Unable to verify company access for this application.');
+    error.statusCode = response.status || 502;
+    error.code = result.error?.code || 'COMPANY_ACCESS_CHECK_FAILED';
+    throw error;
+  }
+  return {
+    companyId: String(result.data.companyId),
+    canView: Boolean(result.data.canView),
+    canManage: Boolean(result.data.canManage),
+  };
+}
+
+async function notifyApplicationStatus(application, type, message, changedBy) {
+  let warning = null;
+  try {
+    if (!SERVICE_API_KEY) throw new Error('SERVICE_API_KEY is not configured for notification delivery.');
+    const eventId = createHash('sha256')
+      .update(`${application._id}:${type}:${application.updatedAt?.toISOString() || Date.now()}`)
+      .digest('hex');
+    const response = await fetch(`${NOTIFICATION_SERVICE_URL}/api/v1/notifications/internal`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-service-key': SERVICE_API_KEY,
+      },
+      body: JSON.stringify({
+        eventId,
+        userId: application.studentUserId,
+        type,
+        title: 'Application status updated',
+        message,
+        payload: { applicationId: application._id, stage: application.stage, changedBy },
+      }),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.success) {
+      throw new Error(result.error?.message || `Notification service returned ${response.status}.`);
+    }
+    return { delivered: true };
+  } catch (error) {
+    warning = error.message;
+    console.error('Application status notification failed', {
+      applicationId: String(application._id),
+      error: warning,
+    });
+    return { delivered: false, warning };
+  }
+}
+
+async function authorizeApplicationReader(application, user, res) {
+  const userId = String(getUserId(user) || '');
+  if (user.role === 'ADMIN') return true;
+  if (user.role === 'STUDENT') {
+    if (application.studentUserId === userId) return true;
+    res.status(403).json({
+      success: false,
+      error: { code: 'FORBIDDEN', message: 'Access denied to this application.' },
+    });
+    return false;
+  }
+  if (user.role !== 'RECRUITER') {
+    res.status(403).json({
+      success: false,
+      error: { code: 'FORBIDDEN', message: 'Access denied to this application.' },
+    });
+    return false;
+  }
+  const access = await getApplicationRecruitmentAccess(application, userId);
+  if (!access.canView || access.companyId !== String(application.companyId)) {
+    res.status(403).json({
+      success: false,
+      error: { code: 'FORBIDDEN', message: 'Access denied to this application.' },
+    });
+    return false;
+  }
+  return true;
+}
+
+async function authorizeApplicationDecision(application, user, res) {
+  if (user.role !== 'RECRUITER') {
+    res.status(403).json({
+      success: false,
+      error: { code: 'FORBIDDEN', message: 'Only authorized company recruiters can change recruitment decisions.' },
+    });
+    return false;
+  }
+  const access = await getApplicationRecruitmentAccess(application, String(getUserId(user) || ''));
+  if (!access.canManage || access.companyId !== String(application.companyId)) {
+    res.status(403).json({
+      success: false,
+      error: { code: 'FORBIDDEN', message: 'You do not have permission to manage this company recruitment pipeline.' },
+    });
+    return false;
+  }
+  return true;
 }
 
 // ─── Student Operations ─────────────────────────────────────────────────────
@@ -136,7 +269,11 @@ export async function applyForJob(req, res) {
       btechCgpa: Number(student.btechCgpa),
       activeBacklogs: Number(student.activeBacklogs),
       batchYear: Number(student.batchYear),
-      resumeUrl: student.resumeUrl || '',
+      resumeUrl: '',
+      resumeFileName: student.resumeFileName || '',
+      resumeOriginalName: student.resumeOriginalName || '',
+      resumeMimeType: student.resumeMimeType || '',
+      resumeSnapshotAt: student.resumeFileName ? new Date() : null,
       skills,
       recruitmentRounds: job.selectionRounds || [],
       coverLetter: coverLetter || '',
@@ -145,6 +282,9 @@ export async function applyForJob(req, res) {
       history: initialHistory,
     });
 
+    if (application.resumeFileName) {
+      application.resumeUrl = `/api/v1/applications/${application._id}/resume`;
+    }
     await application.save();
 
     return res.status(201).json({
@@ -159,7 +299,7 @@ export async function applyForJob(req, res) {
         error: { code: 'DUPLICATE_APPLICATION', message: 'You have already applied for this job.' },
       });
     }
-    return res.status(500).json({
+    return res.status(err.statusCode || 500).json({
       success: false,
       error: { code: 'INTERNAL_ERROR', message: err.message },
     });
@@ -301,7 +441,7 @@ export async function getMyApplications(req, res) {
       data: { applications, count: applications.length },
     });
   } catch (err) {
-    return res.status(500).json({
+    return res.status(err.statusCode || 500).json({
       success: false,
       error: { code: 'INTERNAL_ERROR', message: err.message },
     });
@@ -339,9 +479,7 @@ export async function getApplications(req, res) {
 
     // Recruiters can only access applications for their own company
     if (req.user?.role === 'RECRUITER') {
-      if (req.user.companyId) {
-        query.companyId = req.user.companyId;
-      }
+      query.companyId = await getRecruiterCompanyId(String(getUserId(req.user) || ''));
     } else if (companyId) {
       query.companyId = companyId;
     }
@@ -388,7 +526,7 @@ export async function getApplications(req, res) {
       },
     });
   } catch (err) {
-    return res.status(500).json({
+    return res.status(err.statusCode || 500).json({
       success: false,
       error: { code: 'INTERNAL_ERROR', message: err.message },
     });
@@ -411,15 +549,7 @@ export async function getApplicationById(req, res) {
       });
     }
 
-    const userId = getUserId(req.user);
-
-    // Authorization check
-    if (req.user?.role === 'STUDENT' && application.studentUserId !== userId) {
-      return res.status(403).json({
-        success: false,
-        error: { code: 'FORBIDDEN', message: 'Access denied to this application.' },
-      });
-    }
+    if (!(await authorizeApplicationReader(application, req.user, res))) return;
 
     return res.status(200).json({
       success: true,
@@ -432,9 +562,71 @@ export async function getApplicationById(req, res) {
         error: { code: 'INVALID_ID', message: 'Invalid application ID.' },
       });
     }
-    return res.status(500).json({
+    return res.status(err.statusCode || 500).json({
       success: false,
       error: { code: 'INTERNAL_ERROR', message: err.message },
+    });
+  }
+}
+
+export async function getApplicationResume(req, res) {
+  try {
+    const application = await Application.findById(req.params.id).lean();
+    if (!application) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'APPLICATION_NOT_FOUND', message: 'Application not found.' },
+      });
+    }
+    if (!(await authorizeApplicationReader(application, req.user, res))) return;
+
+    const fileName = application.resumeFileName ||
+      (application.resumeUrl ? application.resumeUrl.split('/').pop() : '');
+    if (!fileName) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'RESUME_NOT_FOUND', message: 'No resume was attached to this application.' },
+      });
+    }
+    if (!SERVICE_API_KEY) {
+      return res.status(503).json({
+        success: false,
+        error: { code: 'SERVICE_CONFIGURATION_ERROR', message: 'Resume service authorization is not configured.' },
+      });
+    }
+
+    const response = await fetch(
+      `${STUDENT_SERVICE_URL}/api/v1/students/internal/${encodeURIComponent(application.studentUserId)}/resume?fileName=${encodeURIComponent(fileName)}`,
+      { headers: { 'x-service-key': SERVICE_API_KEY } }
+    );
+    if (!response.ok) {
+      const body = await response.text();
+      let errorPayload;
+      try {
+        errorPayload = JSON.parse(body);
+      } catch {
+        errorPayload = null;
+      }
+      return res.status(response.status).json(errorPayload || {
+        success: false,
+        error: { code: 'RESUME_SERVICE_ERROR', message: 'Unable to retrieve the application resume.' },
+      });
+    }
+
+    const contentType = response.headers.get('content-type') || application.resumeMimeType || 'application/octet-stream';
+    const contentDisposition = response.headers.get('content-disposition') ||
+      `attachment; filename="${encodeURIComponent(application.resumeOriginalName || fileName)}"`;
+    res.set({
+      'Content-Type': contentType,
+      'Content-Disposition': contentDisposition,
+      'X-Content-Type-Options': 'nosniff',
+      'Cache-Control': 'private, no-store',
+    });
+    return Readable.fromWeb(response.body).pipe(res);
+  } catch (err) {
+    return res.status(err.statusCode || 500).json({
+      success: false,
+      error: { code: err.code || 'RESUME_READ_FAILED', message: err.message },
     });
   }
 }
@@ -458,6 +650,7 @@ export async function updateApplicationStage(req, res) {
         error: { code: 'APPLICATION_NOT_FOUND', message: 'Application not found.' },
       });
     }
+    if (!(await authorizeApplicationDecision(application, req.user, res))) return;
 
     const previousStage = application.stage;
     application.stage = stage;
@@ -480,14 +673,20 @@ export async function updateApplicationStage(req, res) {
     });
 
     await application.save();
+    const notification = await notifyApplicationStatus(
+      application,
+      'APPLICATION_STATUS_CHANGED',
+      `Your application for ${application.jobTitle} is now ${application.stage}.`,
+      userId
+    );
 
     return res.status(200).json({
       success: true,
       message: `Candidate stage successfully updated to '${stage}'.`,
-      data: { application },
+      data: { application, notification },
     });
   } catch (err) {
-    return res.status(500).json({
+    return res.status(err.statusCode || 500).json({
       success: false,
       error: { code: 'INTERNAL_ERROR', message: err.message },
     });
@@ -525,6 +724,7 @@ export async function scheduleInterview(req, res) {
         error: { code: 'APPLICATION_NOT_FOUND', message: 'Application not found.' },
       });
     }
+    if (!(await authorizeApplicationDecision(application, req.user, res))) return;
 
     const interviewData = {
       roundNumber: Number(roundNumber),
@@ -564,14 +764,20 @@ export async function scheduleInterview(req, res) {
     });
 
     await application.save();
+    const notification = await notifyApplicationStatus(
+      application,
+      'APPLICATION_STATUS_CHANGED',
+      `An interview round was scheduled for your application to ${application.jobTitle}.`,
+      userId
+    );
 
     return res.status(200).json({
       success: true,
       message: `Interview Round ${roundNumber} scheduled successfully.`,
-      data: { application },
+      data: { application, notification },
     });
   } catch (err) {
-    return res.status(500).json({
+    return res.status(err.statusCode || 500).json({
       success: false,
       error: { code: 'INTERNAL_ERROR', message: err.message },
     });
@@ -597,6 +803,7 @@ export async function submitInterviewEvaluation(req, res) {
         error: { code: 'APPLICATION_NOT_FOUND', message: 'Application not found.' },
       });
     }
+    if (!(await authorizeApplicationDecision(application, req.user, res))) return;
 
     const round = application.interviews.find((r) => r.roundNumber === Number(roundNumber));
     if (!round) {
@@ -636,14 +843,20 @@ export async function submitInterviewEvaluation(req, res) {
     });
 
     await application.save();
+    const notification = await notifyApplicationStatus(
+      application,
+      'APPLICATION_STATUS_CHANGED',
+      `Your recruitment progress for ${application.jobTitle} was updated to ${application.stage}.`,
+      userId
+    );
 
     return res.status(200).json({
       success: true,
       message: 'Interview round evaluation submitted.',
-      data: { application },
+      data: { application, notification },
     });
   } catch (err) {
-    return res.status(500).json({
+    return res.status(err.statusCode || 500).json({
       success: false,
       error: { code: 'INTERNAL_ERROR', message: err.message },
     });
@@ -676,6 +889,7 @@ export async function updatePlacementOffer(req, res) {
         error: { code: 'APPLICATION_NOT_FOUND', message: 'Application not found.' },
       });
     }
+    if (!(await authorizeApplicationDecision(application, req.user, res))) return;
 
     if (finalPlacementStatus && PLACEMENT_STATUSES.includes(finalPlacementStatus)) {
       application.finalPlacementStatus = finalPlacementStatus;
@@ -704,14 +918,20 @@ export async function updatePlacementOffer(req, res) {
     });
 
     await application.save();
+    const notification = await notifyApplicationStatus(
+      application,
+      'APPLICATION_STATUS_CHANGED',
+      `The placement decision for your ${application.jobTitle} application is ${application.finalPlacementStatus}.`,
+      userId
+    );
 
     return res.status(200).json({
       success: true,
       message: 'Placement offer updated successfully.',
-      data: { application },
+      data: { application, notification },
     });
   } catch (err) {
-    return res.status(500).json({
+    return res.status(err.statusCode || 500).json({
       success: false,
       error: { code: 'INTERNAL_ERROR', message: err.message },
     });

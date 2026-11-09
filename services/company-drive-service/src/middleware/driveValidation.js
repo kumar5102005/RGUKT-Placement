@@ -11,12 +11,56 @@ function sendValidationError(res, details) {
   });
 }
 
+function validateRecruitmentRounds(rounds) {
+  if (rounds === undefined) return [];
+  if (!Array.isArray(rounds)) {
+    return [{ field: 'recruitmentRounds', message: 'Recruitment rounds must be an array.' }];
+  }
+
+  const errors = [];
+  rounds.forEach((round, index) => {
+    const prefix = `recruitmentRounds[${index}]`;
+    if (Number(round.roundNumber) !== index + 1) {
+      errors.push({ field: `${prefix}.roundNumber`, message: 'Round sequence must be consecutive, starting at 1.' });
+    }
+    if (typeof round.name !== 'string' || round.name.trim().length < 2) {
+      errors.push({ field: `${prefix}.name`, message: 'Round name must contain at least 2 characters.' });
+    }
+    if (!ROUND_TYPES.includes(round.roundType)) {
+      errors.push({ field: `${prefix}.roundType`, message: `Round type must be one of: ${ROUND_TYPES.join(', ')}.` });
+    }
+    if (round.mode !== undefined && !['ONLINE', 'IN_PERSON', 'HYBRID'].includes(round.mode)) {
+      errors.push({ field: `${prefix}.mode`, message: 'Mode must be ONLINE, IN_PERSON, or HYBRID.' });
+    }
+    if (round.scheduledDate) {
+      const scheduledDate = new Date(round.scheduledDate);
+      if (Number.isNaN(scheduledDate.getTime())) {
+        errors.push({ field: `${prefix}.scheduledDate`, message: 'Scheduled date must be valid.' });
+      }
+    }
+    if (round.durationMinutes !== undefined && round.durationMinutes !== null) {
+      const duration = Number(round.durationMinutes);
+      if (!Number.isInteger(duration) || duration < 1) {
+        errors.push({ field: `${prefix}.durationMinutes`, message: 'Duration must be a positive whole number of minutes.' });
+      }
+    }
+    if (round.status !== undefined && !['PLANNED', 'SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'].includes(round.status)) {
+      errors.push({ field: `${prefix}.status`, message: 'Invalid round status.' });
+    }
+    if (round.qualificationCriteria !== undefined && typeof round.qualificationCriteria !== 'string') {
+      errors.push({ field: `${prefix}.qualificationCriteria`, message: 'Qualification criteria must be text.' });
+    }
+  });
+  return errors;
+}
+
 /**
  * Validates placement drive creation payload.
  */
 export function validateDriveCreation(req, res, next) {
   const errors = [];
   const { title, companyId, registrationWindow, eligibilityCriteria } = req.body;
+  errors.push(...validateRecruitmentRounds(req.body.recruitmentRounds));
 
   if (!title || typeof title !== 'string' || title.trim().length < 3) {
     errors.push({ field: 'title', message: 'Drive title must be at least 3 characters long.' });
@@ -65,6 +109,14 @@ export function validateDriveCreation(req, res, next) {
   next();
 }
 
+export function validateDriveUpdate(req, res, next) {
+  const errors = req.body.recruitmentRounds === undefined
+    ? []
+    : validateRecruitmentRounds(req.body.recruitmentRounds);
+  if (errors.length > 0) return sendValidationError(res, errors);
+  next();
+}
+
 /**
  * Validates round scheduling.
  */
@@ -97,4 +149,3 @@ export function validateRoundSchedule(req, res, next) {
 
   next();
 }
-

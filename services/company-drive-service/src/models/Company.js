@@ -26,6 +26,7 @@ const recruiterEntrySchema = new mongoose.Schema(
     designation: { type: String, default: 'Recruiter', trim: true },
     phone: { type: String, default: '', trim: true },
     role: { type: String, enum: ['PRIMARY', 'SECONDARY'], default: 'SECONDARY' },
+    canManageRecruitment: { type: Boolean, default: false },
     status: { type: String, enum: ['ACTIVE', 'INVITED', 'INACTIVE'], default: 'ACTIVE' },
     temporaryPassword: { type: String, select: false },
     addedAt: { type: Date, default: Date.now },

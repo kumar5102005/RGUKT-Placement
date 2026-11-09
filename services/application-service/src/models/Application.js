@@ -161,6 +161,10 @@ const applicationSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    resumeFileName: { type: String, default: '' },
+    resumeOriginalName: { type: String, default: '' },
+    resumeMimeType: { type: String, default: '' },
+    resumeSnapshotAt: { type: Date, default: null },
     skills: {
       type: [String],
       default: [],

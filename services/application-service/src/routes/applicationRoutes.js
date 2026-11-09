@@ -10,6 +10,7 @@ import {
   getMyApplications,
   getApplications,
   getApplicationById,
+  getApplicationResume,
   updateApplicationStage,
   scheduleInterview,
   submitInterviewEvaluation,
@@ -39,13 +40,14 @@ router.get('/my', authenticate, authorize('STUDENT'), getMyApplications);
 
 // ─── Recruiter & Admin Management ───────────────────────────────────────────
 router.get('/', authenticate, authorize('RECRUITER', 'ADMIN'), getApplications);
+router.get('/:id/resume', authenticate, getApplicationResume);
 router.get('/:id', authenticate, getApplicationById);
 
 // ─── Stage Transitions & Shortlisting ───────────────────────────────────────
 router.patch(
   '/:id/stage',
   authenticate,
-  authorize('RECRUITER', 'ADMIN'),
+  authorize('RECRUITER'),
   validateStageTransition,
   updateApplicationStage
 );
@@ -54,7 +56,7 @@ router.patch(
 router.post(
   '/:id/interviews',
   authenticate,
-  authorize('RECRUITER', 'ADMIN'),
+  authorize('RECRUITER'),
   validateInterviewSchedule,
   scheduleInterview
 );
@@ -62,7 +64,7 @@ router.post(
 router.patch(
   '/:id/interviews/:roundNumber/evaluation',
   authenticate,
-  authorize('RECRUITER', 'ADMIN'),
+  authorize('RECRUITER'),
   submitInterviewEvaluation
 );
 
@@ -70,7 +72,7 @@ router.patch(
 router.patch(
   '/:id/offer',
   authenticate,
-  authorize('RECRUITER', 'ADMIN'),
+  authorize('RECRUITER'),
   updatePlacementOffer
 );
 

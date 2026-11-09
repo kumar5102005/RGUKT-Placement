@@ -13,12 +13,16 @@ import {
   checkInternalJobEligibility,
   checkInternalEligibility,
   getInternalJobData,
+  getInternalRecruiterCompany,
+  getInternalRecruitmentAccess,
 } from '../controllers/jobController.js';
 
 const router = Router();
 
 // ─── Internal Service-to-Service Query ──────────────────────────────────────
 router.get('/internal/:id', requireInternalServiceKey, getInternalJobData);
+router.get('/internal/recruiters/:userId/company', requireInternalServiceKey, getInternalRecruiterCompany);
+router.get('/internal/:id/recruitment-access/:userId', requireInternalServiceKey, getInternalRecruitmentAccess);
 router.post('/internal/:id/check-eligibility', requireInternalServiceKey, checkInternalJobEligibility);
 router.post('/internal/eligibility-check', requireInternalServiceKey, checkInternalEligibility);
 

@@ -194,9 +194,16 @@ async function runTests() {
 
     // 6. Administrator Profile Verification
     console.log("\n[Test Suite 6: TPO Verification Workflow]");
+    const targetStudentSearchRes = await makeRequest(
+      "GET",
+      `/search?search=${encodeURIComponent(studentUser.studentId)}`,
+      null,
+      { Authorization: `Bearer ${adminToken}` }
+    );
+    assert(targetStudentSearchRes.data.data.students.length > 0, "Student search returns the target profile");
     const verifyRes = await makeRequest(
       "PATCH",
-      `/${studentUser.studentId}/verify`,
+      `/${targetStudentSearchRes.data.data.students[0]._id}/verify`,
       {
         verificationStatus: "VERIFIED",
         verificationNotes: "All semester grade cards and credentials verified by TPO.",
@@ -205,6 +212,13 @@ async function runTests() {
     );
     assert(verifyRes.status === 200, "Admin marks student as VERIFIED with 200 OK");
     assert(verifyRes.data.data.profile.verificationStatus === "VERIFIED", "Status successfully updated to VERIFIED");
+    const invalidVerifyRes = await makeRequest(
+      "PATCH",
+      "/not-a-profile-id/verify",
+      { verificationStatus: "VERIFIED" },
+      { Authorization: `Bearer ${adminToken}` }
+    );
+    assert(invalidVerifyRes.status === 404, "Invalid profile identifier returns 404");
 
     // 7. Internal Service Synchronous Query
     console.log("\n[Test Suite 7: Internal Service-to-Service Query]");

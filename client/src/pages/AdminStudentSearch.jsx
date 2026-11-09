@@ -87,7 +87,7 @@ export default function AdminStudentSearch() {
       if (data.success) {
         setActionMessage(`✓ Student ${studentId} marked as ${newStatus}`);
         setStudents((prev) =>
-          prev.map((s) => (s.studentId === studentId ? { ...s, verificationStatus: newStatus } : s))
+          prev.map((s) => (s._id === studentId ? { ...s, verificationStatus: newStatus } : s))
         );
       } else {
         setVerificationError(data.error?.message || 'Verification update failed');
@@ -266,8 +266,7 @@ export default function AdminStudentSearch() {
                     <td className="py-3 px-4">
                       {s.resumeUrl ? (
                         <a
-                          // href={`http://localhost:8080/api/v1/students${s.resumeUrl}`}
-                          href={`/api/v1/students${s.resumeUrl}`}
+                          href={`/api/v1/students/${encodeURIComponent(s._id)}/resume`}
                           target="_blank"
                           rel="noreferrer"
                           className="inline-flex items-center space-x-1 text-emerald-400 hover:text-emerald-300 font-medium transition"
@@ -297,7 +296,7 @@ export default function AdminStudentSearch() {
                     <td className="py-3 px-4 text-right space-x-1.5">
                       {s.verificationStatus !== 'VERIFIED' && (
                         <button
-                          onClick={() => handleVerification(s.studentId, 'VERIFIED')}
+                          onClick={() => handleVerification(s._id, 'VERIFIED')}
                           className="px-2.5 py-1 rounded bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 transition text-[11px]"
                         >
                           Verify
@@ -305,7 +304,7 @@ export default function AdminStudentSearch() {
                       )}
                       {s.verificationStatus !== 'REJECTED' && (
                         <button
-                          onClick={() => handleVerification(s.studentId, 'REJECTED')}
+                          onClick={() => handleVerification(s._id, 'REJECTED')}
                           className="px-2.5 py-1 rounded bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/30 transition text-[11px]"
                         >
                           Reject

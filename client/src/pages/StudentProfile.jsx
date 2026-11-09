@@ -21,7 +21,7 @@ const BRANCHES = ["CSE", "ECE", "EEE", "MECH", "CIVIL", "CHEM", "MME"];
 const GENDERS = ["MALE", "FEMALE", "OTHER", "PREFER_NOT_TO_SAY"];
 
 export default function StudentProfile() {
-  const { accessToken, user } = useAuth();
+  const { accessToken, user, updateUser } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -134,6 +134,16 @@ export default function StudentProfile() {
           ...prev,
           ...data.data.profile,
           completionPercentage: data.data.profile.completionPercentage,
+        }));
+        updateUser({
+          fullName: data.data.profile.fullName || user?.fullName,
+          email: data.data.profile.email || user?.email,
+        });
+        window.dispatchEvent(new CustomEvent('placement:user-profile-updated', {
+          detail: {
+            fullName: data.data.profile.fullName,
+            email: data.data.profile.email,
+          },
         }));
       } else {
         setError(data.error?.message || 'Failed to update profile');
@@ -733,7 +743,7 @@ export default function StudentProfile() {
               </p>
               {profile.resumeUrl && (
                 <a
-                  href={`/api/v1/students${profile.resumeUrl}`}
+                  href={profile.resumeUrl}
                   target="_blank"
                   rel="noreferrer"
                   className="inline-flex items-center space-x-1 text-xs text-emerald-400 hover:text-emerald-300 font-medium mt-2 transition"

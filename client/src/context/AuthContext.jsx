@@ -142,6 +142,18 @@ export function AuthProvider({ children }) {
     });
   }, []);
 
+  const updateUser = useCallback((updates) => {
+    const storedUser = getStoredValue(STORAGE_KEYS.user);
+    if (storedUser) {
+      try {
+        saveSession({ user: { ...JSON.parse(storedUser), ...updates } });
+      } catch (error) {
+        console.error("Unable to update saved user information:", error);
+      }
+    }
+    setUser((currentUser) => currentUser ? { ...currentUser, ...updates } : currentUser);
+  }, []);
+
   // Fetch the logged-in user's profile
   const fetchCurrentUser = useCallback(async (token) => {
     const response = await fetch(`${API_BASE_URL}/me`, {
@@ -465,6 +477,7 @@ export function AuthProvider({ children }) {
         login,
         register,
         logout,
+        updateUser,
         refreshSession,
         apiFetch,
       }}

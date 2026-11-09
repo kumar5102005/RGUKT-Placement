@@ -770,3 +770,71 @@ export async function getInternalJobData(req, res) {
     });
   }
 }
+
+export async function getInternalRecruiterCompany(req, res) {
+  try {
+    const userId = String(req.params.userId);
+    const company = await Company.findOne({
+      $or: [
+        { registeredBy: userId },
+        { recruiters: { $elemMatch: { userId, status: 'ACTIVE' } } },
+      ],
+    }).select('_id').lean();
+    if (!company) {
+      return res.status(403).json({
+        success: false,
+        error: { code: 'FORBIDDEN', message: 'Recruiter is not an active member of a company.' },
+      });
+    }
+    return res.status(200).json({ success: true, data: { companyId: company._id } });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      error: { code: 'INTERNAL_ERROR', message: err.message },
+    });
+  }
+}
+
+export async function getInternalRecruitmentAccess(req, res) {
+  try {
+    const userId = String(req.params.userId);
+    const [job, company] = await Promise.all([
+      Job.findById(req.params.id).select('companyId').lean(),
+      Company.findOne({
+        $or: [
+          { registeredBy: userId },
+          { recruiters: { $elemMatch: { userId, status: 'ACTIVE' } } },
+        ],
+      }).select('_id registeredBy recruiters').lean(),
+    ]);
+    if (!job) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'JOB_NOT_FOUND', message: 'Job posting not found.' },
+      });
+    }
+
+    const sameCompany = company && String(company._id) === String(job.companyId);
+    const recruiter = sameCompany
+      ? company.recruiters.find((entry) => entry.userId === userId && entry.status === 'ACTIVE')
+      : null;
+    const isOwner = sameCompany && company.registeredBy === userId;
+    const canManage = Boolean(isOwner || recruiter?.role === 'PRIMARY' || recruiter?.canManageRecruitment);
+    if (!sameCompany) {
+      return res.status(403).json({
+        success: false,
+        error: { code: 'FORBIDDEN', message: 'Recruiter is not authorized for this job.' },
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: { companyId: job.companyId, canView: true, canManage },
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      error: { code: 'INTERNAL_ERROR', message: err.message },
+    });
+  }
+}

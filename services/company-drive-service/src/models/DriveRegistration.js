@@ -21,6 +21,19 @@ const roundStatusSchema = new mongoose.Schema(
     remarks: { type: String, default: '' },
     score: { type: Number, default: null },
     updatedAt: { type: Date, default: Date.now },
+    updatedBy: { type: String, default: '' },
+  },
+  { _id: false }
+);
+
+const decisionHistorySchema = new mongoose.Schema(
+  {
+    status: { type: String, required: true },
+    roundNumber: { type: Number, default: null },
+    roundStatus: { type: String, default: '' },
+    changedBy: { type: String, required: true },
+    changedAt: { type: Date, default: Date.now },
+    remarks: { type: String, default: '' },
   },
   { _id: false }
 );
@@ -84,6 +97,10 @@ const driveRegistrationSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    resumeFileName: { type: String, default: '' },
+    resumeOriginalName: { type: String, default: '' },
+    resumeMimeType: { type: String, default: '' },
+    resumeSnapshotAt: { type: Date, default: null },
     status: {
       type: String,
       enum: REGISTRATION_STATUSES,
@@ -92,6 +109,10 @@ const driveRegistrationSchema = new mongoose.Schema(
     },
     roundProgress: {
       type: [roundStatusSchema],
+      default: [],
+    },
+    decisionHistory: {
+      type: [decisionHistorySchema],
       default: [],
     },
     registeredAt: {

@@ -50,6 +50,7 @@ export default function Sidebar() {
             <li key={ln.to}>
               <NavLink
                 to={ln.to}
+                end={ln.to === '/dashboard'}
                 className={({ isActive }) =>
                   `flex items-center space-x-3 py-2 px-3 rounded transition ${
                     isActive ? 'bg-emerald-600 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white'
@@ -74,4 +75,3 @@ export default function Sidebar() {
     </nav>
   );
 }
-

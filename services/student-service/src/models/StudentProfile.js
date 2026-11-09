@@ -76,6 +76,16 @@ const certificationSchema = new mongoose.Schema(
   { _id: true }
 );
 
+const resumeVersionSchema = new mongoose.Schema(
+  {
+    fileName: { type: String, required: true },
+    originalName: { type: String, required: true },
+    mimeType: { type: String, required: true },
+    uploadedAt: { type: Date, required: true },
+  },
+  { _id: false }
+);
+
 const studentProfileSchema = new mongoose.Schema(
   {
     userId: {
@@ -180,6 +190,10 @@ const studentProfileSchema = new mongoose.Schema(
     resumeMimeType: String,
     resumeSize: Number,
     resumeUploadedAt: Date,
+    resumeVersions: {
+      type: [resumeVersionSchema],
+      default: [],
+    },
 
     // Professional Profiles
     linkedinUrl: {
@@ -220,6 +234,14 @@ const studentProfileSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
+    toJSON: {
+      transform(_doc, ret) {
+        ret.resumeUrl = ret.resumeFileName
+          ? `/api/v1/students/${encodeURIComponent(ret.studentId)}/resume`
+          : '';
+        return ret;
+      },
+    },
   }
 );
 

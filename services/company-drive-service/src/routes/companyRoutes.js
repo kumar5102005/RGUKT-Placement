@@ -20,6 +20,7 @@ import {
   getOwnCompanyRecruiters,
   removeOwnCompanyRecruiter,
   toggleOwnCompanyRecruiterStatus,
+  updateOwnRecruiterPermissions,
   getInternalCompanyData,
 } from '../controllers/companyController.js';
 
@@ -43,6 +44,7 @@ router.get('/my/recruiters', authenticate, authorize('RECRUITER'), getOwnCompany
 router.post('/my/recruiters', authenticate, authorize('RECRUITER'), validateAddRecruiter, addOwnCompanyRecruiter);
 router.delete('/my/recruiters/:recruiterId', authenticate, authorize('RECRUITER'), removeOwnCompanyRecruiter);
 router.patch('/my/recruiters/:recruiterId/status', authenticate, authorize('RECRUITER'), toggleOwnCompanyRecruiterStatus);
+router.patch('/my/recruiters/:recruiterId/permissions', authenticate, authorize('RECRUITER'), updateOwnRecruiterPermissions);
 
 // ─── Search (authenticated) ──────────────────────────────────────────────────
 router.get('/search', authenticate, searchCompanies);
@@ -67,4 +69,3 @@ router.post(
 router.delete('/:id/recruiters/:recruiterId', authenticate, authorize('ADMIN', 'RECRUITER'), removeRecruiter);
 
 export default router;
-

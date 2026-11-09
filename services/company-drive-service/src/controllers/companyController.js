@@ -472,7 +472,7 @@ export async function verifyCompany(req, res) {
  * Helper to add a recruiter entry to a company document.
  */
 async function attachRecruiterToCompany(company, recruiter, recruiterData) {
-  const { designation, phone } = recruiterData;
+  const { designation, phone, canManageRecruitment = false } = recruiterData;
   const cleanEmail = recruiter.email.toLowerCase().trim();
 
   const duplicate = company.recruiters.some(
@@ -492,6 +492,7 @@ async function attachRecruiterToCompany(company, recruiter, recruiterData) {
     designation: designation ? designation.trim() : 'Recruiter',
     phone: phone ? phone.trim() : '',
     role: 'SECONDARY',
+    canManageRecruitment: Boolean(canManageRecruitment),
     status: 'ACTIVE',
     addedAt: new Date(),
   };
@@ -709,6 +710,55 @@ export async function toggleOwnCompanyRecruiterStatus(req, res) {
     return res.status(500).json({
       success: false,
       error: { code: 'INTERNAL_ERROR', message: err.message },
+    });
+  }
+}
+
+export async function updateOwnRecruiterPermissions(req, res) {
+  try {
+    const userId = getUserId(req.user);
+    const company = await findCompanyForManager(userId);
+    if (!company) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'COMPANY_NOT_FOUND', message: 'No managed company found for this recruiter.' },
+      });
+    }
+
+    const recruiter = company.recruiters.find(
+      (entry) => entry._id?.toString() === req.params.recruiterId ||
+        entry.userId === req.params.recruiterId
+    );
+    if (!recruiter || recruiter.status !== 'ACTIVE') {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'RECRUITER_NOT_FOUND', message: 'Active recruiter not found in this company.' },
+      });
+    }
+    if (recruiter.role === 'PRIMARY') {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_PERMISSION_TARGET', message: 'Primary recruiter permissions cannot be changed here.' },
+      });
+    }
+    if (typeof req.body.canManageRecruitment !== 'boolean') {
+      return res.status(422).json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'canManageRecruitment must be a boolean.' },
+      });
+    }
+
+    recruiter.canManageRecruitment = req.body.canManageRecruitment;
+    await company.save();
+    return res.status(200).json({
+      success: true,
+      message: 'Recruiter recruitment permissions updated.',
+      data: { recruiter },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: { code: 'INTERNAL_ERROR', message: error.message },
     });
   }
 }

@@ -3,6 +3,9 @@ import {
   getOwnProfile,
   updateOwnProfile,
   uploadResumeFile,
+  getOwnResume,
+  getStudentResume,
+  getInternalResume,
   checkEligibility,
   searchStudents,
   getStudentById,
@@ -22,10 +25,13 @@ const router = Router();
 router.get("/profile", authenticate, getOwnProfile);
 router.put("/profile", authenticate, updateOwnProfile);
 router.post("/profile/resume", authenticate, uploadResume.single("resume"), uploadResumeFile);
+router.get("/profile/resume", authenticate, authorize("STUDENT"), getOwnResume);
 router.get("/eligibility-check", authenticate, checkEligibility);
 
 // ── Administrator Search & Verification Routes ────────────────────────────────
 router.get("/search", authenticate, authorize("ADMIN"), searchStudents);
+router.get("/internal/:id/resume", requireInternalServiceKey, getInternalResume);
+router.get("/:id/resume", authenticate, authorize("ADMIN", "STUDENT"), getStudentResume);
 router.get("/:id", authenticate, authorize("ADMIN"), getStudentById);
 router.patch("/:id/verify", authenticate, authorize("ADMIN"), verifyStudentProfile);
 
@@ -33,4 +39,3 @@ router.patch("/:id/verify", authenticate, authorize("ADMIN"), verifyStudentProfi
 router.get("/internal/:id", requireInternalServiceKey, getInternalStudentData);
 
 export default router;
-

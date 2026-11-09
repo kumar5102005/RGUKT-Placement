@@ -3,7 +3,6 @@ import cors from "cors";
 import morgan from "morgan";
 import dotenv from "dotenv";
 import mongoose from "mongoose";
-import path from "node:path";
 import { createLogger } from "./logger.js";
 import { connectDB } from "./db.js";
 import studentRoutes from "./routes/studentRoutes.js";
@@ -20,9 +19,6 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(morgan("combined"));
-
-// Serve static resume documents
-app.use("/uploads", express.static(path.resolve("uploads")));
 
 // Health check endpoint
 app.get("/health", (req, res) => {

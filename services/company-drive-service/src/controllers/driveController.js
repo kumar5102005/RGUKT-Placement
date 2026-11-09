@@ -1,11 +1,32 @@
 import mongoose from 'mongoose';
+import { Readable } from 'node:stream';
 import PlacementDrive from '../models/PlacementDrive.js';
 import DriveRegistration from '../models/DriveRegistration.js';
 import Company from '../models/Company.js';
 import { evaluateJobEligibility } from '../utils/eligibilityEvaluator.js';
 
 const STUDENT_SERVICE_URL = process.env.STUDENT_SERVICE_URL || 'http://student-service:4002';
+const NOTIFICATION_SERVICE_URL = process.env.NOTIFICATION_SERVICE_URL || 'http://notification-service:4005';
 const SERVICE_API_KEY = process.env.SERVICE_API_KEY;
+
+async function getDriveRecruiterAccess(drive, userId) {
+  const company = await Company.findOne({
+    _id: drive.companyId,
+    $or: [
+      { registeredBy: String(userId) },
+      { recruiters: { $elemMatch: { userId: String(userId), status: 'ACTIVE' } } },
+    ],
+  }).select('_id registeredBy recruiters').lean();
+  if (!company) return { canView: false, canManage: false };
+  const recruiter = (company.recruiters || []).find(
+    (entry) => entry.userId === String(userId) && entry.status === 'ACTIVE'
+  );
+  const isOwner = company.registeredBy === String(userId);
+  return {
+    canView: true,
+    canManage: Boolean(isOwner || recruiter?.role === 'PRIMARY' || recruiter?.canManageRecruitment),
+  };
+}
 
 function getUserId(user) {
   return user?.userId || user?.id || user?._id;
@@ -77,7 +98,7 @@ export async function createPlacementDrive(req, res) {
         openDate: registrationWindow?.openDate ? new Date(registrationWindow.openDate) : new Date(),
         closeDate: new Date(registrationWindow.closeDate),
       },
-      recruitmentRounds: Array.isArray(recruitmentRounds) && recruitmentRounds.length > 0 ? recruitmentRounds : undefined,
+      recruitmentRounds: Array.isArray(recruitmentRounds) ? recruitmentRounds : [],
       venue: venue || 'RGUKT Ongole Campus / Online',
       coordinator: coordinator || {},
       driveStatus: driveStatus || 'REGISTRATION_OPEN',
@@ -161,11 +182,37 @@ export async function getPlacementDrives(req, res) {
         .lean(),
       PlacementDrive.countDocuments(query),
     ]);
+    let recruiterCompany = null;
+    if (req.user?.role === 'RECRUITER') {
+      recruiterCompany = await Company.findOne({
+        $or: [
+          { registeredBy: String(getUserId(req.user)) },
+          { recruiters: { $elemMatch: { userId: String(getUserId(req.user)), status: 'ACTIVE' } } },
+        ],
+      }).select('_id registeredBy recruiters').lean();
+    }
+    const recruiterEntry = recruiterCompany?.recruiters?.find(
+      (entry) => entry.userId === String(getUserId(req.user)) && entry.status === 'ACTIVE'
+    );
+    const recruiterCanManage = Boolean(
+      recruiterCompany &&
+      (recruiterCompany.registeredBy === String(getUserId(req.user)) ||
+        recruiterEntry?.role === 'PRIMARY' ||
+        recruiterEntry?.canManageRecruitment)
+    );
+    const visibleDrives = drives.map((drive) => ({
+      ...drive,
+      canViewCandidates: req.user?.role === 'ADMIN' ||
+        (req.user?.role === 'RECRUITER' && String(recruiterCompany?._id) === String(drive.companyId)),
+      canManageRecruitment: req.user?.role === 'RECRUITER' &&
+        recruiterCanManage &&
+        String(recruiterCompany?._id) === String(drive.companyId),
+    }));
 
     return res.status(200).json({
       success: true,
       data: {
-        drives,
+        drives: visibleDrives,
         pagination: {
           total,
           page: pageNum,
@@ -356,7 +403,19 @@ export async function updateDriveStatus(req, res) {
  */
 export async function scheduleRound(req, res) {
   try {
-    const { roundNumber, roundType, name, description, mode, scheduledDate, venueOrLink, instructions } = req.body;
+    const {
+      roundNumber,
+      roundType,
+      name,
+      description,
+      mode,
+      scheduledDate,
+      durationMinutes,
+      venueOrLink,
+      instructions,
+      qualificationCriteria,
+      status,
+    } = req.body;
 
     const drive = await PlacementDrive.findById(req.params.id);
     if (!drive) {
@@ -375,8 +434,11 @@ export async function scheduleRound(req, res) {
       description: description || '',
       mode: mode || 'ONLINE',
       scheduledDate: scheduledDate ? new Date(scheduledDate) : null,
+      durationMinutes: durationMinutes ? Number(durationMinutes) : null,
       venueOrLink: venueOrLink || '',
       instructions: instructions || '',
+      qualificationCriteria: qualificationCriteria || '',
+      status: status || 'PLANNED',
       isCompleted: false,
     };
 
@@ -515,10 +577,17 @@ export async function registerStudentForDrive(req, res) {
       activeBacklogs: Number(studentData.activeBacklogs),
       batchYear: Number(studentData.batchYear),
       resumeUrl: studentData.resumeUrl || '',
+      resumeFileName: studentData.resumeFileName || '',
+      resumeOriginalName: studentData.resumeOriginalName || '',
+      resumeMimeType: studentData.resumeMimeType || '',
+      resumeSnapshotAt: studentData.resumeFileName ? new Date() : null,
       status: 'REGISTERED',
       roundProgress,
     });
 
+    if (registration.resumeFileName) {
+      registration.resumeUrl = `/api/v1/drives/placement-drives/${drive._id}/registrations/${registration._id}/resume`;
+    }
     await registration.save();
 
     // Increment registered count on placement drive
@@ -576,6 +645,23 @@ export async function getMyDriveRegistrations(req, res) {
  */
 export async function getDriveRegistrations(req, res) {
   try {
+    const drive = await PlacementDrive.findById(req.params.id).select('companyId').lean();
+    if (!drive) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'DRIVE_NOT_FOUND', message: 'Placement drive not found.' },
+      });
+    }
+    if (req.user.role === 'RECRUITER') {
+      const access = await getDriveRecruiterAccess(drive, getUserId(req.user));
+      if (!access.canView) {
+        return res.status(403).json({
+          success: false,
+          error: { code: 'FORBIDDEN', message: 'You cannot view candidates for this company drive.' },
+        });
+      }
+    }
+
     const { status, branch } = req.query;
     const query = { driveId: req.params.id };
 
@@ -607,7 +693,25 @@ export async function updateRegistrationStatus(req, res) {
   try {
     const { status, roundNumber, roundStatus, remarks, score } = req.body;
 
-    const registration = await DriveRegistration.findById(req.params.registrationId);
+    const drive = await PlacementDrive.findById(req.params.id).select('companyId').lean();
+    if (!drive) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'DRIVE_NOT_FOUND', message: 'Placement drive not found.' },
+      });
+    }
+    const access = await getDriveRecruiterAccess(drive, getUserId(req.user));
+    if (req.user.role !== 'RECRUITER' || !access.canManage) {
+      return res.status(403).json({
+        success: false,
+        error: { code: 'FORBIDDEN', message: 'Only authorized company recruiters can update drive decisions.' },
+      });
+    }
+
+    const registration = await DriveRegistration.findOne({
+      _id: req.params.registrationId,
+      driveId: drive._id,
+    });
     if (!registration) {
       return res.status(404).json({
         success: false,
@@ -626,20 +730,144 @@ export async function updateRegistrationStatus(req, res) {
         if (remarks !== undefined) round.remarks = remarks;
         if (score !== undefined) round.score = score;
         round.updatedAt = new Date();
+        round.updatedBy = String(getUserId(req.user));
+      } else {
+        return res.status(404).json({
+          success: false,
+          error: { code: 'ROUND_NOT_FOUND', message: `Round ${roundNumber} is not configured for this registration.` },
+        });
       }
     }
 
+    registration.decisionHistory.push({
+      status: registration.status,
+      roundNumber: roundNumber === undefined ? null : Number(roundNumber),
+      roundStatus: roundNumber === undefined
+        ? ''
+        : registration.roundProgress.find((round) => round.roundNumber === Number(roundNumber))?.status || '',
+      changedBy: String(getUserId(req.user)),
+      changedAt: new Date(),
+      remarks: remarks || '',
+    });
     await registration.save();
+
+    let notification = { delivered: false, warning: 'Notification was not configured.' };
+    try {
+      if (!SERVICE_API_KEY) throw new Error('SERVICE_API_KEY is not configured for notification delivery.');
+      const response = await fetch(`${NOTIFICATION_SERVICE_URL}/api/v1/notifications/internal`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-service-key': SERVICE_API_KEY },
+        body: JSON.stringify({
+          eventId: `${registration._id}:${registration.updatedAt.getTime()}`,
+          userId: registration.studentUserId,
+          type: 'APPLICATION_STATUS_CHANGED',
+          title: 'Placement drive progress updated',
+          message: `Your selection progress for ${registration.driveTitle} was updated.`,
+          payload: { registrationId: registration._id, status: registration.status },
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error?.message || `Notification service returned ${response.status}.`);
+      }
+      notification = { delivered: true };
+    } catch (error) {
+      notification = { delivered: false, warning: error.message };
+      console.error('Drive registration notification failed', {
+        registrationId: String(registration._id),
+        error: error.message,
+      });
+    }
 
     return res.status(200).json({
       success: true,
       message: 'Student drive status updated.',
-      data: { registration },
+      data: { registration, notification },
     });
   } catch (err) {
     return res.status(500).json({
       success: false,
       error: { code: 'INTERNAL_ERROR', message: err.message },
+    });
+  }
+}
+
+export async function getDriveRegistrationResume(req, res) {
+  try {
+    const registration = await DriveRegistration.findOne({
+      _id: req.params.registrationId,
+      driveId: req.params.id,
+    }).lean();
+    if (!registration) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'REGISTRATION_NOT_FOUND', message: 'Registration not found.' },
+      });
+    }
+
+    const userId = String(getUserId(req.user) || '');
+    if (req.user.role === 'STUDENT' && registration.studentUserId !== userId) {
+      return res.status(403).json({
+        success: false,
+        error: { code: 'FORBIDDEN', message: 'Access denied to this resume.' },
+      });
+    }
+    if (req.user.role === 'RECRUITER') {
+      const drive = await PlacementDrive.findById(req.params.id).select('companyId').lean();
+      const access = drive ? await getDriveRecruiterAccess(drive, userId) : { canView: false };
+      if (!access.canView) {
+        return res.status(403).json({
+          success: false,
+          error: { code: 'FORBIDDEN', message: 'Access denied to this resume.' },
+        });
+      }
+    } else if (req.user.role !== 'STUDENT' && req.user.role !== 'ADMIN') {
+      return res.status(403).json({
+        success: false,
+        error: { code: 'FORBIDDEN', message: 'Access denied to this resume.' },
+      });
+    }
+    if (!registration.resumeFileName) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'RESUME_NOT_FOUND', message: 'No resume was attached to this registration.' },
+      });
+    }
+    if (!SERVICE_API_KEY) {
+      return res.status(503).json({
+        success: false,
+        error: { code: 'SERVICE_CONFIGURATION_ERROR', message: 'Resume service authorization is not configured.' },
+      });
+    }
+
+    const response = await fetch(
+      `${STUDENT_SERVICE_URL}/api/v1/students/internal/${encodeURIComponent(registration.studentUserId)}/resume?fileName=${encodeURIComponent(registration.resumeFileName)}`,
+      { headers: { 'x-service-key': SERVICE_API_KEY } }
+    );
+    if (!response.ok) {
+      const body = await response.text();
+      let payload;
+      try {
+        payload = JSON.parse(body);
+      } catch {
+        payload = null;
+      }
+      return res.status(response.status).json(payload || {
+        success: false,
+        error: { code: 'RESUME_SERVICE_ERROR', message: 'Unable to retrieve the registration resume.' },
+      });
+    }
+    res.set({
+      'Content-Type': response.headers.get('content-type') || registration.resumeMimeType || 'application/octet-stream',
+      'Content-Disposition': response.headers.get('content-disposition') || 'attachment',
+      'X-Content-Type-Options': 'nosniff',
+      'Cache-Control': 'private, no-store',
+    });
+    return Readable.fromWeb(response.body).pipe(res);
+  } catch (err) {
+    return res.status(err.statusCode || 500).json({
+      success: false,
+      error: { code: err.code || 'RESUME_READ_FAILED', message: err.message },
     });
   }
 }

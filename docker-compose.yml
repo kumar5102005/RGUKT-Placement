@@ -75,6 +75,8 @@ services:
       COMPANY_DRIVE_SERVICE_URL: http://company-drive-service:4003
     expose:
       - "4002"
+    volumes:
+      - student_uploads:/app/uploads
     depends_on:
       student-db:
         condition: service_healthy
@@ -222,6 +224,7 @@ networks:
 volumes:
   auth_data:
   student_data:
+  student_uploads:
   drive_data:
   application_data:
   notification_data:

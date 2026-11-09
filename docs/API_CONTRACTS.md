@@ -95,7 +95,6 @@
     "batchYear": 2026,
     "btechCgpa": 8.42,
     "activeBacklogs": 0,
-    "resumeUrl": "https://storage.rguktong.ac.in/resumes/o180123.pdf",
     "skills": ["JavaScript", "React", "Node.js", "MongoDB", "Docker"],
     "githubUrl": "https://github.com/saikumar-rgukt"
   }
@@ -104,6 +103,12 @@
 ---
 
 ### C. Company & Drive Service Endpoints (`/api/v1/drives`)
+
+Placement-drive `recruitmentRounds` are configurable: a drive may have no rounds or any number of sequentially numbered rounds. Round numbering, names, types, and scheduling values are validated on create and update. Registered-candidate status and round decisions can only be changed by an active recruiter for the drive's company who has decision-management permission; admins retain read-only monitoring access.
+
+Company recruiters can grant or remove decision-management permission for an active secondary recruiter with `PATCH /api/v1/companies/my/recruiters/:recruiterId/permissions` and `{ "canManageRecruitment": true|false }`. The owner and primary recruiter retain this permission.
+
+`GET /api/v1/drives/placement-drives/:driveId/registrations/:registrationId/resume` streams a private resume for its owning student, an authorized recruiter for the drive's company, or an admin. Resume metadata is snapshotted at registration time so a later student upload does not change the submitted document.
 
 | Method | Endpoint | Access | Description |
 | :--- | :--- | :--- | :--- |
@@ -144,6 +149,8 @@
 
 ### D. Application Service Endpoints (`/api/v1/applications`)
 
+Application records snapshot the resume file name, original name, MIME type, and submission time. `GET /api/v1/applications/:applicationId/resume` permits access to the owning student, an authorized recruiter for the application's company, or an admin. Application status, interview, evaluation, and offer changes are restricted to authorized recruiters; admins have read-only access.
+
 | Method | Endpoint | Access | Description |
 | :--- | :--- | :--- | :--- |
 | `POST` | `/api/v1/applications` | Student | Submit application for a drive (enforces eligibility) |
@@ -182,4 +189,3 @@
 | `GET`  | `/api/v1/notifications` | Authenticated | Get paginated notifications for current user |
 | `PATCH`| `/api/v1/notifications/:id/read` | Authenticated | Mark a single notification as read |
 | `PATCH`| `/api/v1/notifications/read-all` | Authenticated | Mark all notifications as read |
-

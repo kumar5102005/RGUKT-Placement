@@ -57,32 +57,7 @@ export default function PlacementDrives() {
     maxActiveBacklogs: '0',
     maxHistoryBacklogs: '2',
     registrationDeadline: '',
-    rounds: [
-      {
-        roundNumber: 1,
-        roundType: 'APTITUDE',
-        name: 'Online Aptitude & Reasoning Test',
-        mode: 'ONLINE',
-        venueOrLink: 'https://assessment.rguktong.ac.in',
-        instructions: 'Duration: 90 mins. Covers Quantitative, Logical, and Verbal skills.',
-      },
-      {
-        roundNumber: 2,
-        roundType: 'TECHNICAL_INTERVIEW',
-        name: 'Technical Interview (Round 1)',
-        mode: 'ONLINE',
-        venueOrLink: 'Google Meet / MS Teams Link',
-        instructions: 'Core CS fundamentals, coding, and problem solving.',
-      },
-      {
-        roundNumber: 3,
-        roundType: 'HR_INTERVIEW',
-        name: 'HR & Cultural Fitment Discussion',
-        mode: 'IN_PERSON',
-        venueOrLink: 'Placement Cell Conference Room 1',
-        instructions: 'Behavioral assessment and original document verification.',
-      },
-    ],
+    rounds: [],
   });
 
   const headers = useCallback(() => ({
@@ -170,6 +145,58 @@ export default function PlacementDrives() {
     });
   }
 
+  function updateRound(index, field, value) {
+    setDriveForm((previous) => ({
+      ...previous,
+      rounds: previous.rounds.map((round, roundIndex) =>
+        roundIndex === index ? { ...round, [field]: value } : round
+      ),
+    }));
+  }
+
+  function addRound() {
+    setDriveForm((previous) => ({
+      ...previous,
+      rounds: [
+        ...previous.rounds,
+        {
+          roundNumber: previous.rounds.length + 1,
+          roundType: 'OTHER',
+          name: '',
+          description: '',
+          mode: 'ONLINE',
+          scheduledDate: '',
+          durationMinutes: '',
+          venueOrLink: '',
+          qualificationCriteria: '',
+          status: 'PLANNED',
+        },
+      ],
+    }));
+  }
+
+  function moveRound(index, direction) {
+    setDriveForm((previous) => {
+      const target = index + direction;
+      if (target < 0 || target >= previous.rounds.length) return previous;
+      const rounds = [...previous.rounds];
+      [rounds[index], rounds[target]] = [rounds[target], rounds[index]];
+      return {
+        ...previous,
+        rounds: rounds.map((round, roundIndex) => ({ ...round, roundNumber: roundIndex + 1 })),
+      };
+    });
+  }
+
+  function removeRound(index) {
+    setDriveForm((previous) => ({
+      ...previous,
+      rounds: previous.rounds
+        .filter((_, roundIndex) => roundIndex !== index)
+        .map((round, roundIndex) => ({ ...round, roundNumber: roundIndex + 1 })),
+    }));
+  }
+
   // Open Create Modal
   function handleOpenCreateModal() {
     const defaultDeadline = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString().slice(0, 16);
@@ -184,32 +211,7 @@ export default function PlacementDrives() {
       maxActiveBacklogs: '0',
       maxHistoryBacklogs: '2',
       registrationDeadline: defaultDeadline,
-      rounds: [
-        {
-          roundNumber: 1,
-          roundType: 'APTITUDE',
-          name: 'Online Aptitude & Reasoning Test',
-          mode: 'ONLINE',
-          venueOrLink: 'https://assessment.rguktong.ac.in',
-          instructions: 'Duration: 90 mins.',
-        },
-        {
-          roundNumber: 2,
-          roundType: 'TECHNICAL_INTERVIEW',
-          name: 'Technical Interview (Round 1)',
-          mode: 'ONLINE',
-          venueOrLink: 'Google Meet Link',
-          instructions: 'Coding and fundamental engineering concepts.',
-        },
-        {
-          roundNumber: 3,
-          roundType: 'HR_INTERVIEW',
-          name: 'HR & Cultural Fitment Discussion',
-          mode: 'IN_PERSON',
-          venueOrLink: 'Placement Cell Conference Room',
-          instructions: 'Behavioral discussion and document check.',
-        },
-      ],
+      rounds: [],
     });
     setModalError('');
     setIsCreateModalOpen(true);
@@ -238,7 +240,12 @@ export default function PlacementDrives() {
           openDate: new Date(),
           closeDate: new Date(driveForm.registrationDeadline),
         },
-        recruitmentRounds: driveForm.rounds,
+        recruitmentRounds: driveForm.rounds.map((round, index) => ({
+          ...round,
+          roundNumber: index + 1,
+          durationMinutes: round.durationMinutes ? Number(round.durationMinutes) : null,
+          scheduledDate: round.scheduledDate || null,
+        })),
         driveStatus: 'REGISTRATION_OPEN',
       };
 
@@ -535,7 +542,7 @@ export default function PlacementDrives() {
                             <ArrowRight className="w-3.5 h-3.5" />
                           </button>
                         )
-                      ) : (
+                      ) : drive.canViewCandidates ? (
                         <button
                           onClick={() => handleOpenCandidatesModal(drive)}
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-xs font-medium transition"
@@ -543,7 +550,7 @@ export default function PlacementDrives() {
                           <Users className="w-3.5 h-3.5 text-emerald-400" />
                           <span>Candidates ({drive.registeredStudentsCount || 0})</span>
                         </button>
-                      )}
+                      ) : null}
                     </div>
                   </div>
                 );
@@ -592,7 +599,7 @@ export default function PlacementDrives() {
                     <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
                       Recruitment Selection Pipeline
                     </h4>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                       {reg.roundProgress?.map((round, idx) => (
                         <div
                           key={idx}
@@ -622,6 +629,9 @@ export default function PlacementDrives() {
                           )}
                         </div>
                       ))}
+                      {(!reg.roundProgress || reg.roundProgress.length === 0) && (
+                        <p className="text-xs text-slate-500">No recruitment rounds were configured for this drive.</p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -750,9 +760,84 @@ export default function PlacementDrives() {
                 </div>
               </div>
 
+              {/* Recruitment Rounds */}
+              <div className="space-y-4 bg-slate-800/40 p-4 rounded-xl border border-slate-800">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h4 className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">3. Recruitment Rounds</h4>
+                    <p className="text-[11px] text-slate-400 mt-1">Rounds are optional. Add and order any number of selection stages.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={addRound}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 text-xs"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Add Round
+                  </button>
+                </div>
+                {driveForm.rounds.map((round, index) => (
+                  <div key={index} className="space-y-3 rounded-xl border border-slate-700 bg-slate-900/60 p-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-white">Round {index + 1}</span>
+                      <div className="flex items-center gap-2">
+                        <button type="button" disabled={index === 0} onClick={() => moveRound(index, -1)} className="text-xs text-slate-300 disabled:opacity-30">Up</button>
+                        <button type="button" disabled={index === driveForm.rounds.length - 1} onClick={() => moveRound(index, 1)} className="text-xs text-slate-300 disabled:opacity-30">Down</button>
+                        <button type="button" onClick={() => removeRound(index)} className="text-xs text-rose-400">Remove</button>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <label className="text-[11px] text-slate-400">
+                        Round name *
+                        <input required minLength={2} value={round.name} onChange={(e) => updateRound(index, 'name', e.target.value)} className="mt-1 w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-xs" />
+                      </label>
+                      <label className="text-[11px] text-slate-400">
+                        Round type *
+                        <select required value={round.roundType} onChange={(e) => updateRound(index, 'roundType', e.target.value)} className="mt-1 w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-xs">
+                          {ROUND_TYPES.map((type) => <option key={type} value={type}>{type.replaceAll('_', ' ')}</option>)}
+                        </select>
+                      </label>
+                      <label className="text-[11px] text-slate-400">
+                        Mode
+                        <select value={round.mode} onChange={(e) => updateRound(index, 'mode', e.target.value)} className="mt-1 w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-xs">
+                          <option value="ONLINE">Online</option>
+                          <option value="IN_PERSON">Offline</option>
+                          <option value="HYBRID">Hybrid</option>
+                        </select>
+                      </label>
+                      <label className="text-[11px] text-slate-400">
+                        Date and time
+                        <input type="datetime-local" value={round.scheduledDate || ''} onChange={(e) => updateRound(index, 'scheduledDate', e.target.value)} className="mt-1 w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-xs" />
+                      </label>
+                      <label className="text-[11px] text-slate-400">
+                        Duration (minutes)
+                        <input type="number" min="1" value={round.durationMinutes} onChange={(e) => updateRound(index, 'durationMinutes', e.target.value)} className="mt-1 w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-xs" />
+                      </label>
+                      <label className="text-[11px] text-slate-400">
+                        Status
+                        <select value={round.status} onChange={(e) => updateRound(index, 'status', e.target.value)} className="mt-1 w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-xs">
+                          {['PLANNED', 'SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'].map((status) => <option key={status} value={status}>{status}</option>)}
+                        </select>
+                      </label>
+                      <label className="text-[11px] text-slate-400 sm:col-span-2">
+                        Meeting link or venue
+                        <input value={round.venueOrLink} onChange={(e) => updateRound(index, 'venueOrLink', e.target.value)} className="mt-1 w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-xs" />
+                      </label>
+                      <label className="text-[11px] text-slate-400 sm:col-span-2">
+                        Description
+                        <textarea rows={2} value={round.description} onChange={(e) => updateRound(index, 'description', e.target.value)} className="mt-1 w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-xs" />
+                      </label>
+                      <label className="text-[11px] text-slate-400 sm:col-span-2">
+                        Qualification criteria
+                        <textarea rows={2} value={round.qualificationCriteria} onChange={(e) => updateRound(index, 'qualificationCriteria', e.target.value)} className="mt-1 w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-xs" />
+                      </label>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
               {/* Deadline */}
               <div className="space-y-4 bg-slate-800/40 p-4 rounded-xl border border-slate-800">
-                <h4 className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">3. Registration Deadline</h4>
+                <h4 className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">4. Registration Deadline</h4>
                 <div>
                   <label className="block text-xs font-medium text-slate-400 mb-1">Registration Close Date *</label>
                   <input
@@ -826,9 +911,12 @@ export default function PlacementDrives() {
                       <th className="py-2.5 px-3">Student</th>
                       <th className="py-2.5 px-3">Branch &amp; CGPA</th>
                       <th className="py-2.5 px-3">Backlogs</th>
-                      <th className="py-2.5 px-3">Round 1 (Aptitude)</th>
-                      <th className="py-2.5 px-3">Round 2 (Tech)</th>
-                      <th className="py-2.5 px-3">Round 3 (HR)</th>
+                      <th className="py-2.5 px-3">Resume</th>
+                      {selectedDriveForCandidates.recruitmentRounds?.map((round) => (
+                        <th key={round.roundNumber} className="py-2.5 px-3">
+                          Round {round.roundNumber}: {round.name}
+                        </th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800">
@@ -847,27 +935,45 @@ export default function PlacementDrives() {
                           {c.activeBacklogs}
                         </td>
 
-                        {[1, 2, 3].map((roundNum) => {
+                        <td className="py-2.5 px-3">
+                          {c.resumeFileName ? (
+                            <a
+                              href={`${DRIVES_API}/${selectedDriveForCandidates._id}/registrations/${c._id}/resume`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 text-emerald-400 hover:text-emerald-300"
+                            >
+                              <FileText className="w-3.5 h-3.5" /> View
+                            </a>
+                          ) : <span className="text-slate-500">Not uploaded</span>}
+                        </td>
+
+                        {(selectedDriveForCandidates.recruitmentRounds || []).map((driveRound) => {
+                          const roundNum = driveRound.roundNumber;
                           const round = c.roundProgress?.find((r) => r.roundNumber === roundNum);
                           const roundStatus = round?.status || 'PENDING';
 
                           return (
                             <td key={roundNum} className="py-2.5 px-3">
-                              <select
-                                value={roundStatus}
-                                onChange={(e) => handleUpdateCandidateRound(c._id, roundNum, e.target.value)}
-                                className={`px-2 py-1 rounded text-[11px] font-semibold border ${roundStatus === 'CLEARED'
-                                    ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                                    : roundStatus === 'ELIMINATED'
-                                      ? 'bg-rose-500/20 text-rose-400 border-rose-500/30'
-                                      : 'bg-slate-800 text-slate-300 border-slate-700'
-                                  }`}
-                              >
-                                <option value="PENDING">PENDING</option>
-                                <option value="CLEARED">CLEARED ✓</option>
-                                <option value="ELIMINATED">ELIMINATED ✗</option>
-                                <option value="ABSENT">ABSENT</option>
-                              </select>
+                              {selectedDriveForCandidates.canManageRecruitment ? (
+                                <select
+                                  value={roundStatus}
+                                  onChange={(e) => handleUpdateCandidateRound(c._id, roundNum, e.target.value)}
+                                  className={`px-2 py-1 rounded text-[11px] font-semibold border ${roundStatus === 'CLEARED'
+                                      ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                                      : roundStatus === 'ELIMINATED'
+                                        ? 'bg-rose-500/20 text-rose-400 border-rose-500/30'
+                                        : 'bg-slate-800 text-slate-300 border-slate-700'
+                                    }`}
+                                >
+                                  <option value="PENDING">PENDING</option>
+                                  <option value="CLEARED">CLEARED</option>
+                                  <option value="ELIMINATED">ELIMINATED</option>
+                                  <option value="ABSENT">ABSENT</option>
+                                </select>
+                              ) : (
+                                <span className="text-slate-300">{roundStatus}</span>
+                              )}
                             </td>
                           );
                         })}

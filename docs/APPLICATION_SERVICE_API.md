@@ -24,7 +24,12 @@ Replace `<PORT>` with the port your **application-service** is running on (defau
   - `400 Bad Request` – Job is closed or its application deadline has passed.
   - `409 Conflict` – Duplicate application (student already applied for this job).
 
-The service ignores browser-supplied student identity, academic, resume, and eligibility values. It loads the profile and job from their owning services, reevaluates eligibility, and stores the authoritative profile snapshot. `GET /my` includes the application's recruitment-round snapshot, including applicant-visible schedule, venue, and status updates.
+The service ignores browser-supplied student identity, academic, resume, and eligibility values. It loads the profile and job from their owning services, reevaluates eligibility, and stores the authoritative profile snapshot. The application stores the resume file name, original name, MIME type, and submission time so it continues to reference the resume submitted with the application after the student uploads a newer one. `GET /my` includes the application's recruitment-round snapshot, including applicant-visible schedule, venue, and status updates.
+
+### Download an Application Resume
+- **Endpoint**: `GET /:appId/resume`
+- **Roles**: Owning `STUDENT`, recruiter authorized for the application's company, or `ADMIN`
+- **Behavior**: Streams the private resume through Application Service. Resume data is not served from a public static upload path.
 
 ### Internal: Synchronize Job Recruitment Rounds
 - **Endpoint**: `PUT /internal/jobs/:jobId/recruitment-rounds`
@@ -62,18 +67,18 @@ The service ignores browser-supplied student identity, academic, resume, and eli
 
 ### 5. Update Application Stage
 - **Endpoint**: `PATCH /:appId/stage`
-- **Roles**: `RECRUITER`, `ADMIN`
+- **Roles**: Authorized company `RECRUITER`
 - **Request Body**:
   ```json
-  { "newStage": "UNDER_REVIEW" }
+  { "stage": "Under Review" }
   ```
-- **Response**: Updated application object.
+- **Response**: Updated application and notification delivery result. Admins can monitor applications but cannot change recruitment decisions.
 
 ---
 
 ### 6. Schedule Interview
 - **Endpoint**: `POST /:appId/interviews`
-- **Roles**: `RECRUITER`, `ADMIN`
+- **Roles**: Authorized company `RECRUITER`
 - **Request Body**:
   ```json
   {
@@ -89,7 +94,7 @@ The service ignores browser-supplied student identity, academic, resume, and eli
 
 ### 7. Submit Interview Evaluation
 - **Endpoint**: `PATCH /:appId/interviews/:roundNumber/evaluation`
-- **Roles**: `RECRUITER`, `ADMIN`
+- **Roles**: Authorized company `RECRUITER`
 - **Request Body**:
   ```json
   {
@@ -104,7 +109,7 @@ The service ignores browser-supplied student identity, academic, resume, and eli
 
 ### 8. Update Offer Details
 - **Endpoint**: `PATCH /:appId/offer`
-- **Roles**: `RECRUITER`, `ADMIN`
+- **Roles**: Authorized company `RECRUITER`
 - **Request Body**:
   ```json
   {

@@ -40,8 +40,15 @@ const recruitmentRoundSchema = new mongoose.Schema(
       default: 'ONLINE',
     },
     scheduledDate: { type: Date, default: null },
+    durationMinutes: { type: Number, min: 1, default: null },
     venueOrLink: { type: String, default: '' }, // e.g. "Audi-2 / HackerEarth Link"
     instructions: { type: String, default: '' },
+    qualificationCriteria: { type: String, default: '' },
+    status: {
+      type: String,
+      enum: ['PLANNED', 'SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'],
+      default: 'PLANNED',
+    },
     isCompleted: { type: Boolean, default: false },
   },
   { _id: true }
@@ -153,29 +160,7 @@ const placementDriveSchema = new mongoose.Schema(
     },
     recruitmentRounds: {
       type: [recruitmentRoundSchema],
-      default: [
-        {
-          roundNumber: 1,
-          roundType: 'APTITUDE',
-          name: 'Online Aptitude & Coding Test',
-          mode: 'ONLINE',
-          instructions: 'Online assessment on placement portal. 90 mins duration.',
-        },
-        {
-          roundNumber: 2,
-          roundType: 'TECHNICAL_INTERVIEW',
-          name: 'Technical Interview (Round 1)',
-          mode: 'ONLINE',
-          instructions: 'Technical discussion covering core CS/Engineering fundamentals.',
-        },
-        {
-          roundNumber: 3,
-          roundType: 'HR_INTERVIEW',
-          name: 'HR & Fitment Interview',
-          mode: 'IN_PERSON',
-          instructions: 'Behavioral, communication, and document verification.',
-        },
-      ],
+      default: [],
     },
     driveStatus: {
       type: String,
@@ -236,4 +221,3 @@ placementDriveSchema.pre('validate', async function (next) {
 
 const PlacementDrive = mongoose.model('PlacementDrive', placementDriveSchema);
 export default PlacementDrive;
-
