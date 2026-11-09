@@ -5,6 +5,7 @@ import React, {
   useState,
   useEffect,
   useCallback,
+  useRef,
 } from "react";
 
 const AuthContext = createContext(null);
@@ -406,6 +407,52 @@ export function AuthProvider({ children }) {
 
   const isAuthenticated = Boolean(user && accessToken);
 
+  /**
+   * apiFetch – auto-refreshes the access token on 401/403 and retries.
+   * Drop-in replacement for fetch() in every page/component.
+   */
+  const apiFetch = useCallback(
+    async (url, options = {}) => {
+      const currentToken = accessToken || getStoredValue(STORAGE_KEYS.accessToken);
+
+      const buildHeaders = (tok) => ({
+        "Content-Type": "application/json",
+        ...(options.headers || {}),
+        ...(tok ? { Authorization: `Bearer ${tok}` } : {}),
+      });
+
+      let response = await fetch(url, {
+        ...options,
+        headers: buildHeaders(currentToken),
+      });
+
+      // Silently refresh on token rejection
+      if (response.status === 401 || response.status === 403) {
+        let newToken = null;
+        try {
+          newToken = await refreshSession();
+        } catch {
+          // refresh failed — clear session
+          clearSession();
+          setUser(null);
+          setAccessToken(null);
+          setRefreshToken(null);
+          return response;
+        }
+
+        if (newToken) {
+          response = await fetch(url, {
+            ...options,
+            headers: buildHeaders(newToken),
+          });
+        }
+      }
+
+      return response;
+    },
+    [accessToken, refreshSession]
+  );
+
   return (
     <AuthContext.Provider
       value={{
@@ -419,6 +466,7 @@ export function AuthProvider({ children }) {
         register,
         logout,
         refreshSession,
+        apiFetch,
       }}
     >
       {children}

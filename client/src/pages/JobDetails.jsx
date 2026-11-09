@@ -15,7 +15,7 @@ const APPLICATIONS_API = '/api/v1/applications';
 export default function JobDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { user, token } = useAuth();
+  const { user, token, apiFetch } = useAuth();
 
   const [job, setJob] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -43,7 +43,7 @@ export default function JobDetails() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${API_BASE}/${id}`, { headers: headers() });
+      const res = await apiFetch(`${API_BASE}/${id}`);
       const data = await res.json();
 
       if (res.ok) {
@@ -64,7 +64,7 @@ export default function JobDetails() {
     setEvaluating(true);
     try {
       // 1. Fetch own student profile
-      const studentRes = await fetch(`${STUDENT_API_BASE}/profile`, { headers: headers() });
+      const studentRes = await apiFetch(`${STUDENT_API_BASE}/profile`);
       if (!studentRes.ok) return;
       const studentJson = await studentRes.json();
       const student = studentJson.data?.student;
@@ -73,7 +73,7 @@ export default function JobDetails() {
       setRawStudentData(student);
 
       // 2. Check if already applied
-      fetch(`${APPLICATIONS_API}/my`, { headers: headers() })
+      apiFetch(`${APPLICATIONS_API}/my`)
         .then((res) => res.json())
         .then((data) => {
           const applied = data.data?.applications?.some((a) => a.jobId === id || a.jobId?._id === id);
@@ -82,9 +82,8 @@ export default function JobDetails() {
         .catch(() => { });
 
       // 3. Run eligibility check endpoint
-      const checkRes = await fetch(`${API_BASE}/${id}/check-eligibility`, {
+      const checkRes = await apiFetch(`${API_BASE}/${id}/check-eligibility`, {
         method: 'POST',
-        headers: headers(),
         body: JSON.stringify({
           studentData: {
             btechCgpa: student.academics?.btechCgpa || 0,
@@ -133,7 +132,7 @@ export default function JobDetails() {
         companyId: job.companyId,
         companyName: job.companyName,
         studentData: {
-          studentId: rawStudentData.studentId || user?.studentId || 'O180123',
+          studentId: rawStudentData.studentId || user?.studentId || '',
           studentName: rawStudentData.personalInfo?.fullName || user?.fullName || 'Candidate',
           branch: rawStudentData.branch || 'CSE',
           btechCgpa: rawStudentData.academics?.btechCgpa || 0,

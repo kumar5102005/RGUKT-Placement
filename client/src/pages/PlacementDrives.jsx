@@ -24,7 +24,7 @@ const DRIVE_STATUSES = [
 const ROUND_TYPES = ['APTITUDE', 'TECHNICAL_INTERVIEW', 'HR_INTERVIEW', 'CODING_TEST', 'OTHER'];
 
 export default function PlacementDrives() {
-  const { user, token } = useAuth();
+  const { user, token, apiFetch } = useAuth();
 
   const [activeTab, setActiveTab] = useState('all-drives'); // 'all-drives' | 'my-registrations'
   const [drives, setDrives] = useState([]);

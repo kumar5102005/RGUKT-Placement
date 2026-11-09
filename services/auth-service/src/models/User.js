@@ -36,7 +36,7 @@ const userSchema = new mongoose.Schema(
     },
     studentId: {
       type: String,
-      uppercase: true,
+      lowercase: true,
       trim: true,
       sparse: true,
     },

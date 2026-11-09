@@ -14,7 +14,7 @@ const ROLE_CATEGORIES = ['Full-Time', 'Internship', 'Internship + PPO', 'Contrac
 const WORKPLACE_TYPES = ['On-site', 'Hybrid', 'Remote'];
 
 export default function JobList() {
-  const { user, token } = useAuth();
+  const { user, token, apiFetch } = useAuth();
 
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -52,7 +52,7 @@ export default function JobList() {
       params.set('page', filters.page);
       params.set('limit', '9');
 
-      const res = await fetch(`${API_BASE}?${params.toString()}`, { headers: headers() });
+      const res = await apiFetch(`${API_BASE}?${params.toString()}`);
       const data = await res.json();
 
       if (res.ok) {

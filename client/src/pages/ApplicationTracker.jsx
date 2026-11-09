@@ -21,7 +21,7 @@ const WORKFLOW_STAGES = [
 ];
 
 export default function ApplicationTracker() {
-  const { user, token } = useAuth();
+  const { user, token, apiFetch } = useAuth();
 
   const [applications, setApplications] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -100,7 +100,7 @@ export default function ApplicationTracker() {
         endpoint = `${APPLICATIONS_API}?${params.toString()}`;
       }
 
-      const res = await fetch(endpoint, { headers: headers() });
+      const res = await apiFetch(endpoint);
       const data = await res.json();
 
       if (res.ok) {
@@ -118,12 +118,12 @@ export default function ApplicationTracker() {
   // Fetch Jobs list for filtering
   useEffect(() => {
     if (user?.role !== 'STUDENT') {
-      fetch(`${JOBS_API}?limit=50`, { headers: headers() })
+      apiFetch(`${JOBS_API}?limit=50`)
         .then((res) => res.json())
         .then((data) => setJobsList(data.data?.jobs || []))
         .catch(() => {});
     }
-  }, [user, headers]);
+  }, [user, apiFetch]);
 
   useEffect(() => {
     fetchApplications();
@@ -166,9 +166,8 @@ export default function ApplicationTracker() {
     if (!selectedApp) return;
     setUpdatingStage(true);
     try {
-      const res = await fetch(`${APPLICATIONS_API}/${selectedApp._id}/stage`, {
+      const res = await apiFetch(`${APPLICATIONS_API}/${selectedApp._id}/stage`, {
         method: 'PATCH',
-        headers: headers(),
         body: JSON.stringify(stageForm),
       });
       const data = await res.json();
@@ -200,9 +199,8 @@ export default function ApplicationTracker() {
           .map((s) => s.trim())
           .filter(Boolean),
       };
-      const res = await fetch(`${APPLICATIONS_API}/${selectedApp._id}/interviews`, {
+      const res = await apiFetch(`${APPLICATIONS_API}/${selectedApp._id}/interviews`, {
         method: 'POST',
-        headers: headers(),
         body: JSON.stringify(payload),
       });
       const data = await res.json();
@@ -227,11 +225,10 @@ export default function ApplicationTracker() {
     if (!selectedApp) return;
     setSubmittingEvaluation(true);
     try {
-      const res = await fetch(
+      const res = await apiFetch(
         `${APPLICATIONS_API}/${selectedApp._id}/interviews/${evaluationForm.roundNumber}/evaluation`,
         {
           method: 'PATCH',
-          headers: headers(),
           body: JSON.stringify(evaluationForm),
         }
       );
@@ -257,9 +254,8 @@ export default function ApplicationTracker() {
     if (!selectedApp) return;
     setUpdatingOffer(true);
     try {
-      const res = await fetch(`${APPLICATIONS_API}/${selectedApp._id}/offer`, {
+      const res = await apiFetch(`${APPLICATIONS_API}/${selectedApp._id}/offer`, {
         method: 'PATCH',
-        headers: headers(),
         body: JSON.stringify(offerForm),
       });
       const data = await res.json();

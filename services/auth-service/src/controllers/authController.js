@@ -27,7 +27,7 @@ export async function register(req, res) {
     }
 
     if (role === "STUDENT" && studentId) {
-      const existingStudentId = await User.findOne({ studentId: studentId.toUpperCase().trim() });
+      const existingStudentId = await User.findOne({ studentId: studentId.toLowerCase().trim() });
       if (existingStudentId) {
         return res.status(409).json({
           success: false,
@@ -47,7 +47,7 @@ export async function register(req, res) {
       fullName: fullName.trim(),
       role,
       status: "ACTIVE",
-      studentId: studentId ? studentId.toUpperCase().trim() : undefined,
+      studentId: studentId ? studentId.trim() : undefined,
       companyName: companyName ? companyName.trim() : undefined,
       lastLoginAt: new Date(),
     });

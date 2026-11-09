@@ -143,7 +143,7 @@ export default function Register() {
           {role === 'STUDENT' && (
             <div>
               <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                RGUKT Student ID
+                RGUKT Student ID (e.g. o210524)
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
@@ -153,9 +153,9 @@ export default function Register() {
                   type="text"
                   required
                   value={studentId}
-                  onChange={(e) => setStudentId(e.target.value.toUpperCase())}
-                  placeholder="e.g. O180123"
-                  className="w-full pl-9 pr-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 uppercase focus:outline-none focus:border-emerald-500 transition"
+                  onChange={(e) => setStudentId(e.target.value.toLowerCase())}
+                  placeholder="e.g. o210524"
+                  className="w-full pl-9 pr-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition"
                 />
               </div>
             </div>
