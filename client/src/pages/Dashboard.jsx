@@ -251,14 +251,20 @@ export default function Dashboard() {
               </span>
             </Link>
 
-            <div className="bg-slate-800/60 border border-slate-700/60 p-5 rounded-xl flex flex-col justify-between opacity-60">
+            <Link
+              to="/applications"
+              className="bg-slate-800/60 border border-slate-700/60 hover:border-cyan-500/50 p-5 rounded-xl transition group flex flex-col justify-between"
+            >
               <div>
-                <Users className="w-6 h-6 text-cyan-400 mb-2" />
+                <Users className="w-6 h-6 text-cyan-400 mb-2 group-hover:scale-110 transition" />
                 <h4 className="font-semibold text-white">Applicant Review</h4>
                 <p className="text-xs text-slate-400 mt-1">Review and shortlist student applications for your placement drives.</p>
               </div>
-              <span className="text-xs text-cyan-400 font-medium mt-4">Coming in Phase 7</span>
-            </div>
+              <span className="text-xs text-cyan-400 font-medium flex items-center space-x-1 mt-4">
+                <span>Review Applications</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </span>
+            </Link>
           </div>
 
           {user?.companyName && (

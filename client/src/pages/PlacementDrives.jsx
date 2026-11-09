@@ -282,7 +282,7 @@ export default function PlacementDrives() {
         headers: headers(),
         body: JSON.stringify({
           studentData: {
-            studentId: studentProfile.studentId || user?.studentId || 'O180123',
+            studentId: studentProfile.studentId || user?.studentId || '',
             studentName: studentProfile.personalInfo?.fullName || user?.fullName || 'Student',
             branch: studentProfile.branch || 'CSE',
             btechCgpa: studentProfile.academics?.btechCgpa || 0,

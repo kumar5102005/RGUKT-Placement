@@ -16,6 +16,10 @@ import {
   verifyCompany,
   addRecruiter,
   removeRecruiter,
+  addOwnCompanyRecruiter,
+  getOwnCompanyRecruiters,
+  removeOwnCompanyRecruiter,
+  toggleOwnCompanyRecruiterStatus,
   getInternalCompanyData,
 } from '../controllers/companyController.js';
 
@@ -35,6 +39,10 @@ router.post(
 );
 router.get('/my', authenticate, authorize('RECRUITER'), getOwnCompany);
 router.put('/my', authenticate, authorize('RECRUITER'), validateCompanyUpdate, updateCompany);
+router.get('/my/recruiters', authenticate, authorize('RECRUITER'), getOwnCompanyRecruiters);
+router.post('/my/recruiters', authenticate, authorize('RECRUITER'), validateAddRecruiter, addOwnCompanyRecruiter);
+router.delete('/my/recruiters/:recruiterId', authenticate, authorize('RECRUITER'), removeOwnCompanyRecruiter);
+router.patch('/my/recruiters/:recruiterId/status', authenticate, authorize('RECRUITER'), toggleOwnCompanyRecruiterStatus);
 
 // ─── Search (authenticated) ──────────────────────────────────────────────────
 router.get('/search', authenticate, searchCompanies);
@@ -48,15 +56,15 @@ router.get('/:id', authenticate, getCompanyById);
 // ─── Admin verification ──────────────────────────────────────────────────────
 router.patch('/:id/verify', authenticate, authorize('ADMIN'), validateVerification, verifyCompany);
 
-// ─── Admin recruiter management ──────────────────────────────────────────────
+// ─── Recruiter management (Admin or Company Recruiter) ────────────────────────
 router.post(
   '/:id/recruiters',
   authenticate,
-  authorize('ADMIN'),
+  authorize('ADMIN', 'RECRUITER'),
   validateAddRecruiter,
   addRecruiter
 );
-router.delete('/:id/recruiters/:recruiterId', authenticate, authorize('ADMIN'), removeRecruiter);
+router.delete('/:id/recruiters/:recruiterId', authenticate, authorize('ADMIN', 'RECRUITER'), removeRecruiter);
 
 export default router;
 

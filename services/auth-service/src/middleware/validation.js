@@ -29,9 +29,12 @@ export function validateRegister(req, res, next) {
     errors.push(`Role must be one of: ${ALLOWED_ROLES.join(", ")}`);
   }
 
-  if (role === "STUDENT" && studentId && !/^O\d{6}$/i.test(studentId.trim())) {
-    // RGUKT Ongole student ID format (e.g. O180123)
-    errors.push("Student ID must follow RGUKT format (e.g., O180123)");
+  if (role === "STUDENT") {
+    if (!studentId || !String(studentId).trim()) {
+      errors.push("Student ID is required for student registration");
+    } else if (!/^o\d{6}$/i.test(String(studentId).trim())) {
+      errors.push("Student ID must follow RGUKT format (e.g., o210524)");
+    }
   }
 
   if (role === "RECRUITER" && (!companyName || companyName.trim().length < 2)) {

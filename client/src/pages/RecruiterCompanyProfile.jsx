@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext.jsx';
 import {
   Building2, MapPin, Mail, Phone, Globe, Linkedin, ExternalLink,
   CheckCircle2, Clock, XCircle, Save, Plus, AlertCircle, Loader2,
-  Briefcase, Edit3
+  Briefcase, Edit3, Trash2, UserPlus, Key, Users, Check, X
 } from 'lucide-react';
 
 const API_BASE = '/api/v1/drives';
@@ -78,6 +78,105 @@ export default function RecruiterCompanyProfile() {
     'Content-Type': 'application/json',
     Authorization: `Bearer ${token}`,
   }), [token]);
+
+  // Recruiter Management State
+  const [showAddRecruiterModal, setShowAddRecruiterModal] = useState(false);
+  const [addingRecruiter, setAddingRecruiter] = useState(false);
+  const [recruiterSuccess, setRecruiterSuccess] = useState('');
+  const [recruiterError, setRecruiterError] = useState('');
+  const [tempCredentials, setTempCredentials] = useState(null);
+  const [copiedPass, setCopiedPass] = useState(false);
+
+  const [newRecruiter, setNewRecruiter] = useState({
+    fullName: '',
+    email: '',
+    designation: 'Technical Recruiter',
+    phone: '',
+    role: 'SECONDARY',
+  });
+
+  const handleAddRecruiter = async (e) => {
+    e.preventDefault();
+    setAddingRecruiter(true);
+    setRecruiterError('');
+    setRecruiterSuccess('');
+    setTempCredentials(null);
+
+    try {
+      const res = await fetch(`${API_BASE}/my/recruiters`, {
+        method: 'POST',
+        headers: headers(),
+        body: JSON.stringify(newRecruiter),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setCompany(data.data.company);
+        setRecruiterSuccess(`Recruiter "${newRecruiter.fullName}" added successfully!`);
+        if (data.data.temporaryPassword) {
+          setTempCredentials({
+            email: newRecruiter.email,
+            password: data.data.temporaryPassword,
+          });
+        }
+        setNewRecruiter({
+          fullName: '',
+          email: '',
+          designation: 'Technical Recruiter',
+          phone: '',
+          role: 'SECONDARY',
+        });
+      } else {
+        setRecruiterError(data.error?.message || 'Failed to add recruiter.');
+      }
+    } catch {
+      setRecruiterError('Network error while adding recruiter.');
+    } finally {
+      setAddingRecruiter(false);
+    }
+  };
+
+  const handleRemoveRecruiter = async (recruiterId, recruiterName) => {
+    if (!window.confirm(`Are you sure you want to remove ${recruiterName} from your recruitment team?`)) {
+      return;
+    }
+    try {
+      const res = await fetch(`${API_BASE}/my/recruiters/${recruiterId}`, {
+        method: 'DELETE',
+        headers: headers(),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setCompany(data.data.company);
+        setRecruiterSuccess(`Recruiter ${recruiterName} removed successfully.`);
+        setTimeout(() => setRecruiterSuccess(''), 4000);
+      } else {
+        setRecruiterError(data.error?.message || 'Failed to remove recruiter.');
+      }
+    } catch {
+      setRecruiterError('Network error removing recruiter.');
+    }
+  };
+
+  const handleToggleRecruiterStatus = async (recruiterId, currentStatus) => {
+    const nextStatus = currentStatus === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+    try {
+      const res = await fetch(`${API_BASE}/my/recruiters/${recruiterId}/status`, {
+        method: 'PATCH',
+        headers: headers(),
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setCompany(data.data.company);
+        setRecruiterSuccess(`Recruiter marked as ${nextStatus}.`);
+        setTimeout(() => setRecruiterSuccess(''), 3000);
+      } else {
+        setRecruiterError(data.error?.message || 'Failed to update status.');
+      }
+    } catch {
+      setRecruiterError('Network error updating recruiter status.');
+    }
+  };
 
   // Load existing company
   useEffect(() => {
@@ -272,23 +371,160 @@ export default function RecruiterCompanyProfile() {
             </div>
           </div>
 
-          {/* Recruiters */}
-          {company.recruiters?.length > 0 && (
-            <div className="bg-slate-800/60 border border-slate-700 rounded-xl p-5">
-              <h3 className="font-semibold text-white mb-3">Associated Recruiters</h3>
-              <div className="space-y-2">
+          {/* Company Recruitment Team Management */}
+          <div className="bg-slate-800/60 border border-slate-700 rounded-xl p-6 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-700 pb-3">
+              <div>
+                <h3 className="font-semibold text-white flex items-center gap-2">
+                  <Users className="w-4 h-4 text-emerald-400" />
+                  <span>Company Recruitment Team</span>
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Authorize company team members to manage job postings, interview rounds, and candidate evaluations.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setRecruiterError('');
+                  setRecruiterSuccess('');
+                  setTempCredentials(null);
+                  setShowAddRecruiterModal(true);
+                }}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow transition self-start sm:self-auto"
+              >
+                <UserPlus className="w-4 h-4" />
+                <span>Add Recruiter</span>
+              </button>
+            </div>
+
+            {recruiterSuccess && (
+              <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center justify-between">
+                <span>{recruiterSuccess}</span>
+                <button onClick={() => setRecruiterSuccess('')}><X className="w-3.5 h-3.5" /></button>
+              </div>
+            )}
+
+            {recruiterError && (
+              <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center justify-between">
+                <span>{recruiterError}</span>
+                <button onClick={() => setRecruiterError('')}><X className="w-3.5 h-3.5" /></button>
+              </div>
+            )}
+
+            {tempCredentials && (
+              <div className="p-4 rounded-xl bg-gradient-to-r from-emerald-950/60 to-slate-900 border border-emerald-500/40 text-xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-emerald-300 flex items-center gap-1.5">
+                    <Key className="w-4 h-4" /> Temporary Login Credentials
+                  </span>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(`Email: ${tempCredentials.email}\nPassword: ${tempCredentials.password}`);
+                      setCopiedPass(true);
+                      setTimeout(() => setCopiedPass(false), 2000);
+                    }}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
+                  >
+                    {copiedPass ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedPass ? 'Copied' : 'Copy Credentials'}</span>
+                  </button>
+                </div>
+                <p className="text-slate-300">
+                  Share these credentials with the team member. They can sign in directly at the login portal.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 font-mono">
+                  <div className="bg-slate-900/80 px-3 py-1.5 rounded border border-slate-800 text-slate-300">
+                    <span className="text-slate-500">Email: </span>{tempCredentials.email}
+                  </div>
+                  <div className="bg-slate-900/80 px-3 py-1.5 rounded border border-slate-800 text-emerald-400 font-bold">
+                    <span className="text-slate-500">Password: </span>{tempCredentials.password}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {(!company.recruiters || company.recruiters.length === 0) ? (
+              <div className="p-6 text-center text-slate-400 text-xs bg-slate-900/30 rounded-lg border border-slate-800">
+                <Users className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+                <p>No additional recruiters registered yet.</p>
+                <p className="text-slate-500 mt-1">Click "Add Recruiter" to invite team members.</p>
+              </div>
+            ) : (
+              <div className="space-y-2.5">
                 {company.recruiters.map((r, i) => (
-                  <div key={i} className="flex items-center justify-between p-3 rounded-lg bg-slate-900/50">
-                    <div>
-                      <p className="text-sm font-medium text-slate-200">{r.fullName}</p>
-                      <p className="text-xs text-slate-400">{r.email}</p>
+                  <div
+                    key={r._id || r.userId || i}
+                    className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 rounded-xl bg-slate-900/60 border border-slate-700/60 hover:border-slate-600 transition gap-3"
+                  >
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-semibold text-white">{r.fullName}</span>
+                        <span className="text-[11px] px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 border border-slate-700">
+                          {r.designation || 'Recruiter'}
+                        </span>
+                        <span
+                          className={`text-[10px] px-2 py-0.5 rounded-full font-medium border ${
+                            r.role === 'PRIMARY'
+                              ? 'bg-purple-500/10 text-purple-300 border-purple-500/30'
+                              : 'bg-blue-500/10 text-blue-300 border-blue-500/30'
+                          }`}
+                        >
+                          {r.role || 'SECONDARY'}
+                        </span>
+                        <span
+                          className={`text-[10px] px-2 py-0.5 rounded-full font-medium border ${
+                            r.status === 'INACTIVE'
+                              ? 'bg-slate-700/50 text-slate-400 border-slate-600'
+                              : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                          }`}
+                        >
+                          {r.status || 'ACTIVE'}
+                        </span>
+                      </div>
+                      <div className="text-xs text-slate-400 flex items-center gap-3 flex-wrap">
+                        <span className="flex items-center gap-1">
+                          <Mail className="w-3 h-3 text-slate-500" />
+                          <span>{r.email}</span>
+                        </span>
+                        {r.phone && (
+                          <span className="flex items-center gap-1">
+                            <Phone className="w-3 h-3 text-slate-500" />
+                            <span>{r.phone}</span>
+                          </span>
+                        )}
+                        <span className="text-slate-500 text-[11px]">
+                          Added: {new Date(r.addedAt || Date.now()).toLocaleDateString()}
+                        </span>
+                      </div>
                     </div>
-                    <span className={`text-xs px-2 py-0.5 rounded-full border ${r.role === 'PRIMARY' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-slate-700 text-slate-400 border-slate-600'}`}>{r.role}</span>
+
+                    <div className="flex items-center gap-2 self-end sm:self-auto">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleRecruiterStatus(r._id || r.userId || r.email, r.status)}
+                        className={`px-2.5 py-1 rounded text-xs font-medium border transition ${
+                          r.status === 'INACTIVE'
+                            ? 'bg-emerald-600/20 text-emerald-400 border-emerald-500/30 hover:bg-emerald-600/30'
+                            : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'
+                        }`}
+                      >
+                        {r.status === 'INACTIVE' ? 'Activate' : 'Deactivate'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveRecruiter(r._id || r.userId || r.email, r.fullName)}
+                        title="Remove recruiter"
+                        className="p-1.5 rounded text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       )}
 
@@ -401,6 +637,135 @@ export default function RecruiterCompanyProfile() {
             )}
           </div>
         </form>
+      )}
+
+      {/* Add Recruiter Modal */}
+      {showAddRecruiterModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-slate-800 border border-slate-700 rounded-2xl max-w-lg w-full p-6 space-y-5 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-700/80 pb-3">
+              <div className="flex items-center gap-2 text-white font-bold text-lg">
+                <UserPlus className="w-5 h-5 text-emerald-400" />
+                <span>Add Company Recruiter</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddRecruiterModal(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {recruiterError && (
+              <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{recruiterError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleAddRecruiter} className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">
+                  Full Name <span className="text-rose-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={newRecruiter.fullName}
+                  onChange={(e) => setNewRecruiter({ ...newRecruiter, fullName: e.target.value })}
+                  placeholder="e.g. Priya Sharma"
+                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">
+                  Work Email Address <span className="text-rose-400">*</span>
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={newRecruiter.email}
+                  onChange={(e) => setNewRecruiter({ ...newRecruiter, email: e.target.value })}
+                  placeholder="e.g. priya.sharma@company.com"
+                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-1">
+                    Designation / Job Title <span className="text-rose-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={newRecruiter.designation}
+                    onChange={(e) => setNewRecruiter({ ...newRecruiter, designation: e.target.value })}
+                    placeholder="e.g. Talent Acquisition Lead"
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-1">
+                    Phone Number (Optional)
+                  </label>
+                  <input
+                    type="tel"
+                    value={newRecruiter.phone}
+                    onChange={(e) => setNewRecruiter({ ...newRecruiter, phone: e.target.value })}
+                    placeholder="e.g. +91 98765 43210"
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">
+                  Role Permission Level
+                </label>
+                <select
+                  value={newRecruiter.role}
+                  onChange={(e) => setNewRecruiter({ ...newRecruiter, role: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:border-emerald-500 transition"
+                >
+                  <option value="SECONDARY">Secondary Recruiter (Manage Postings & Interviews)</option>
+                  <option value="PRIMARY">Primary Administrator (Full Company Access)</option>
+                </select>
+              </div>
+
+              <div className="p-3 rounded-lg bg-slate-900/60 border border-slate-700/60 text-xs text-slate-400 space-y-1">
+                <p className="font-semibold text-slate-300 flex items-center gap-1">
+                  <Key className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Automated Credential Generation</span>
+                </p>
+                <p>
+                  A temporary password will be automatically generated. You can copy and share the credentials immediately upon addition.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => setShowAddRecruiterModal(false)}
+                  className="px-4 py-2 rounded-lg border border-slate-700 hover:bg-slate-700/50 text-slate-300 text-sm font-medium transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={addingRecruiter}
+                  className="flex items-center gap-2 px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold shadow disabled:opacity-60 transition"
+                >
+                  {addingRecruiter ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
+                  <span>{addingRecruiter ? 'Adding...' : 'Add Recruiter'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -126,7 +126,7 @@ export async function applyForJob(req, res) {
       companyId,
       companyName: companyName.trim(),
       studentUserId,
-      studentId: studentData.studentId || req.user.studentId || 'O180123',
+      studentId: (studentData.studentId || req.user.studentId || req.user.email?.split('@')[0] || '').toLowerCase().trim(),
       studentName: studentData.studentName || req.user.fullName || 'Candidate',
       studentEmail: req.user.email,
       branch: studentBranch,

@@ -32,6 +32,8 @@ export function generateAccessToken(user) {
     role: user.role,
     fullName: user.fullName,
     status: user.status,
+    studentId: user.studentId || undefined,
+    companyName: user.companyName || undefined,
   };
 
   return jwt.sign(payload, JWT_SECRET, {

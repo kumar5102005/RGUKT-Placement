@@ -2,20 +2,53 @@ import { StudentProfile } from "../models/StudentProfile.js";
 import { calculateProfileCompletion } from "../utils/completionCalculator.js";
 
 /**
+ * Safely extract and normalize the student's college ID without ever generating fake values.
+ */
+function resolveStudentId(req) {
+  if (req.user?.studentId && String(req.user.studentId).trim()) {
+    return String(req.user.studentId).trim().toLowerCase();
+  }
+  if (req.body?.studentId && String(req.body.studentId).trim()) {
+    return String(req.body.studentId).trim().toLowerCase();
+  }
+  if (req.user?.email && req.user.email.includes("@")) {
+    const handle = req.user.email.split("@")[0].trim().toLowerCase();
+    if (/^o\d+/i.test(handle)) {
+      return handle;
+    }
+  }
+  return null;
+}
+
+/**
  * Get the authenticated student's profile
  * GET /api/v1/students/profile
  */
 export async function getOwnProfile(req, res) {
   try {
-    let profile = await StudentProfile.findOne({
-      $or: [{ userId: req.user.id }, { studentId: req.user.studentId }],
-    });
+    const studentId = resolveStudentId(req);
+    const orQueries = [{ userId: req.user.id }];
+    if (studentId) {
+      orQueries.push({ studentId }, { studentId: studentId.toUpperCase() });
+    }
+
+    let profile = await StudentProfile.findOne({ $or: orQueries });
 
     // Automatically initialize a draft profile if not existing
     if (!profile) {
+      if (!studentId) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            code: "STUDENT_ID_REQUIRED",
+            message: "Student ID is missing from user session. Please re-login with a valid student account.",
+          },
+        });
+      }
+
       profile = new StudentProfile({
         userId: req.user.id,
-        studentId: req.user.studentId || `O${Math.floor(180000 + Math.random() * 90000)}`,
+        studentId,
         fullName: req.user.fullName || "RGUKT Student",
         email: req.user.email,
         branch: "CSE",
@@ -27,10 +60,33 @@ export async function getOwnProfile(req, res) {
       profile.completionPercentage = calculateProfileCompletion(profile);
       await profile.save();
     } else {
+      let changed = false;
+      // Sync studentId if it was previously initialized with a random/fake value or case mismatch
+      if (studentId && profile.studentId !== studentId) {
+        profile.studentId = studentId;
+        changed = true;
+      }
+      if (req.user.id && profile.userId !== req.user.id) {
+        profile.userId = req.user.id;
+        changed = true;
+      }
+      if (req.user.fullName && (!profile.fullName || profile.fullName === "RGUKT Student")) {
+        profile.fullName = req.user.fullName;
+        changed = true;
+      }
+      if (req.user.email && !profile.email) {
+        profile.email = req.user.email.toLowerCase();
+        changed = true;
+      }
+
       // Refresh completion percentage
       const newCompletion = calculateProfileCompletion(profile);
       if (profile.completionPercentage !== newCompletion) {
         profile.completionPercentage = newCompletion;
+        changed = true;
+      }
+
+      if (changed) {
         await profile.save();
       }
     }
@@ -59,17 +115,33 @@ export async function getOwnProfile(req, res) {
  */
 export async function updateOwnProfile(req, res) {
   try {
-    let profile = await StudentProfile.findOne({
-      $or: [{ userId: req.user.id }, { studentId: req.user.studentId }],
-    });
+    const studentId = resolveStudentId(req);
+    const orQueries = [{ userId: req.user.id }];
+    if (studentId) {
+      orQueries.push({ studentId }, { studentId: studentId.toUpperCase() });
+    }
+
+    let profile = await StudentProfile.findOne({ $or: orQueries });
 
     if (!profile) {
+      if (!studentId) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            code: "STUDENT_ID_REQUIRED",
+            message: "Student ID is required to create a student profile.",
+          },
+        });
+      }
+
       profile = new StudentProfile({
         userId: req.user.id,
-        studentId: req.user.studentId || req.body.studentId,
+        studentId,
         email: req.user.email,
         fullName: req.body.fullName || req.user.fullName,
       });
+    } else if (studentId && profile.studentId !== studentId) {
+      profile.studentId = studentId;
     }
 
     const {
@@ -187,19 +259,35 @@ export async function uploadResumeFile(req, res) {
       });
     }
 
-    let profile = await StudentProfile.findOne({
-      $or: [{ userId: req.user.id }, { studentId: req.user.studentId }],
-    });
+    const studentId = resolveStudentId(req);
+    const orQueries = [{ userId: req.user.id }];
+    if (studentId) {
+      orQueries.push({ studentId }, { studentId: studentId.toUpperCase() });
+    }
+
+    let profile = await StudentProfile.findOne({ $or: orQueries });
 
     if (!profile) {
+      if (!studentId) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            code: "STUDENT_ID_REQUIRED",
+            message: "Student ID is required before uploading a resume.",
+          },
+        });
+      }
+
       profile = new StudentProfile({
         userId: req.user.id,
-        studentId: req.user.studentId || `O${Math.floor(180000 + Math.random() * 90000)}`,
+        studentId,
         email: req.user.email,
         fullName: req.user.fullName || "RGUKT Student",
         branch: "CSE",
         batchYear: new Date().getFullYear(),
       });
+    } else if (studentId && profile.studentId !== studentId) {
+      profile.studentId = studentId;
     }
 
     const fileRelativePath = `/uploads/resumes/${req.file.filename}`;
@@ -244,9 +332,13 @@ export async function checkEligibility(req, res) {
   try {
     const { minCgpa, allowedBranches, maxBacklogs, eligibleBatchYear } = req.query;
 
-    const profile = await StudentProfile.findOne({
-      $or: [{ userId: req.user.id }, { studentId: req.user.studentId }],
-    });
+    const studentId = resolveStudentId(req);
+    const orQueries = [{ userId: req.user.id }];
+    if (studentId) {
+      orQueries.push({ studentId }, { studentId: studentId.toUpperCase() });
+    }
+
+    const profile = await StudentProfile.findOne({ $or: orQueries });
 
     if (!profile) {
       return res.status(404).json({
@@ -411,9 +503,14 @@ export async function searchStudents(req, res) {
 export async function getStudentById(req, res) {
   try {
     const { id } = req.params;
+    const cleanId = String(id).trim();
 
     const profile = await StudentProfile.findOne({
-      $or: [{ _id: id.match(/^[0-9a-fA-F]{24}$/) ? id : null }, { studentId: id.toUpperCase() }],
+      $or: [
+        { _id: cleanId.match(/^[0-9a-fA-F]{24}$/) ? cleanId : null },
+        { studentId: cleanId.toLowerCase() },
+        { studentId: cleanId.toUpperCase() },
+      ],
     });
 
     if (!profile) {
@@ -456,8 +553,13 @@ export async function verifyStudentProfile(req, res) {
       });
     }
 
+    const cleanId = String(id).trim();
     const profile = await StudentProfile.findOne({
-      $or: [{ _id: id.match(/^[0-9a-fA-F]{24}$/) ? id : null }, { studentId: id.toUpperCase() }],
+      $or: [
+        { _id: cleanId.match(/^[0-9a-fA-F]{24}$/) ? cleanId : null },
+        { studentId: cleanId.toLowerCase() },
+        { studentId: cleanId.toUpperCase() },
+      ],
     });
 
     if (!profile) {
@@ -496,12 +598,14 @@ export async function verifyStudentProfile(req, res) {
 export async function getInternalStudentData(req, res) {
   try {
     const { id } = req.params;
+    const cleanId = String(id).trim();
 
     const profile = await StudentProfile.findOne({
       $or: [
-        { _id: id.match(/^[0-9a-fA-F]{24}$/) ? id : null },
-        { studentId: id.toUpperCase() },
-        { userId: id },
+        { _id: cleanId.match(/^[0-9a-fA-F]{24}$/) ? cleanId : null },
+        { studentId: cleanId.toLowerCase() },
+        { studentId: cleanId.toUpperCase() },
+        { userId: cleanId },
       ],
     });
 

@@ -187,10 +187,10 @@ function Overview() {
   const services = [
     { name: "NGINX API Gateway", port: 8080, db: "N/A", status: "Active Edge", role: "Routing, Security & Rate Limiting", icon: ShieldCheck, color: "text-blue-400" },
     { name: "Auth Service", port: 4001, db: "rgukt_auth_db", status: "Active", role: "JWT, RBAC & Refresh Rotation", icon: ShieldCheck, color: "text-emerald-400" },
-    { name: "Student Service", port: 4002, db: "rgukt_student_db", status: "Phase 4 Operational", role: "Profiles, Academics & Resume Uploads", icon: Users, color: "text-emerald-400" },
-    { name: "Company & Drive Service", port: 4003, db: "rgukt_drive_db", status: "Phase 7 Operational", role: "Placement Drives, Rounds & Registration", icon: Briefcase, color: "text-emerald-400" },
-    { name: "Application Service", port: 4004, db: "rgukt_application_db", status: "Phase 8 Operational", role: "Recruitment Workflow, Interviews & Offers", icon: FileText, color: "text-emerald-400" },
-    { name: "Notification Service", port: 4005, db: "rgukt_notification_db", status: "Skeleton Active", role: "In-App & Email Alerts", icon: Bell, color: "text-rose-400" },
+    { name: "Student Service", port: 4002, db: "rgukt_student_db", status: "Operational", role: "Profiles, Academics & Resume Uploads", icon: Users, color: "text-emerald-400" },
+    { name: "Company & Drive Service", port: 4003, db: "rgukt_drive_db", status: "Operational", role: "Placement Drives, Rounds & Registration", icon: Briefcase, color: "text-emerald-400" },
+    { name: "Application Service", port: 4004, db: "rgukt_application_db", status: "Operational", role: "Recruitment Workflow, Interviews & Offers", icon: FileText, color: "text-emerald-400" },
+    { name: "Notification Service", port: 4005, db: "rgukt_notification_db", status: "Active", role: "In-App & Email Alerts", icon: Bell, color: "text-rose-400" },
   ];
 
   return (
@@ -198,7 +198,7 @@ function Overview() {
       <div className="bg-gradient-to-r from-emerald-950/40 via-slate-900 to-slate-900 border border-emerald-500/20 rounded-2xl p-6 sm:p-8">
         <div className="max-w-3xl">
           <span className="inline-block px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 mb-3">
-            Phase 7: Placement Drive Management Operational
+            Placement Drive Management Active
           </span>
           <h2 className="text-2xl sm:text-3xl font-bold text-white mb-2">Campus Placement Drives, Multi-Stage Rounds &amp; Candidate Registration</h2>
           <p className="text-slate-400 text-sm sm:text-base leading-relaxed mb-6">
@@ -294,7 +294,7 @@ function ServicesPage() {
         Company &amp; Drive Service endpoints managed behind NGINX Gateway at port 8080:
       </p>
       <div className="bg-slate-800/40 border border-slate-700 rounded-xl p-6 font-mono text-sm space-y-3">
-        <div className="text-emerald-400 font-bold">Placement Drive Service Endpoints (Phase 7 Active):</div>
+        <div className="text-emerald-400 font-bold">Placement Drive Service Endpoints:</div>
         <div className="text-slate-300">• POST   /api/v1/drives/placement-drives (Create &amp; schedule drive - ADMIN)</div>
         <div className="text-slate-300">• GET    /api/v1/drives/placement-drives (List drives with filters &amp; status - Authenticated)</div>
         <div className="text-slate-300">• GET    /api/v1/drives/placement-drives/:id (Get drive specifications &amp; rounds)</div>
@@ -306,7 +306,7 @@ function ServicesPage() {
         <div className="text-slate-300">• PATCH  /api/v1/drives/placement-drives/:id/registrations/:rid/status (Update round status - ADMIN)</div>
       </div>
       <div className="bg-slate-800/40 border border-slate-700 rounded-xl p-6 font-mono text-sm space-y-3">
-        <div className="text-cyan-400 font-bold">Job Management Service Endpoints (Phase 6 Active):</div>
+        <div className="text-cyan-400 font-bold">Job Management Service Endpoints:</div>
         <div className="text-slate-300">• POST   /api/v1/jobs (Create job posting - RECRUITER / ADMIN)</div>
         <div className="text-slate-300">• GET    /api/v1/jobs (List &amp; filter jobs with pagination - Authenticated)</div>
         <div className="text-slate-300">• GET    /api/v1/jobs/my (Get recruiter company job postings - RECRUITER)</div>
@@ -318,7 +318,7 @@ function ServicesPage() {
         <div className="text-slate-300">• GET    /api/v1/jobs/internal/:id (Internal microservice synchronous query)</div>
       </div>
       <div className="bg-slate-800/40 border border-slate-700 rounded-xl p-6 font-mono text-sm space-y-3">
-        <div className="text-blue-400 font-bold">Company Service Endpoints (Phase 5 Active):</div>
+        <div className="text-blue-400 font-bold">Company Service Endpoints:</div>
         <div className="text-slate-300">• POST /api/v1/drives (Register company - RECRUITER)</div>
         <div className="text-slate-300">• GET  /api/v1/drives/my (Get own company - RECRUITER)</div>
         <div className="text-slate-300">• PUT  /api/v1/drives/my (Update company profile - RECRUITER)</div>
@@ -331,7 +331,7 @@ function ServicesPage() {
         <div className="text-slate-300">• GET  /api/v1/drives/internal/:id (Internal service sync)</div>
       </div>
       <div className="bg-slate-800/40 border border-slate-700 rounded-xl p-6 font-mono text-sm space-y-3">
-        <div className="text-blue-400 font-bold">Student Service Endpoints (Phase 4 Active):</div>
+        <div className="text-blue-400 font-bold">Student Service Endpoints:</div>
         <div className="text-slate-300">• GET  /api/v1/students/profile (Get own student profile)</div>
         <div className="text-slate-300">• PUT  /api/v1/students/profile (Update academics, skills, projects)</div>
         <div className="text-slate-300">• POST /api/v1/students/profile/resume (Upload PDF/DOC resume document)</div>
@@ -466,7 +466,7 @@ export default function App() {
             </Routes>
           </main>
           <footer className="border-t border-slate-800 py-6 text-center text-xs text-slate-500">
-            RGUKT Ongole Placement Hub • Phase 7 Placement Drive Management Operational
+            RGUKT Ongole Placement Hub • Microservices Platform
           </footer>
         </div>
       </AuthProvider>

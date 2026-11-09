@@ -490,7 +490,7 @@ export async function registerStudentForDrive(req, res) {
       driveTitle: drive.title,
       companyName: drive.companyName,
       studentUserId,
-      studentId: studentData.studentId || req.user.studentId || req.user.email?.split('@')[0] || 'O180123',
+      studentId: (studentData.studentId || req.user.studentId || req.user.email?.split('@')[0] || '').toLowerCase().trim(),
       studentName: studentData.studentName || req.user.fullName || 'Student',
       studentEmail: req.user.email,
       branch: studentBranch,

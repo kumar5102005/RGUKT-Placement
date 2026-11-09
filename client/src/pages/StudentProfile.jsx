@@ -81,6 +81,7 @@ export default function StudentProfile() {
         const p = data.data.profile;
         setProfile({
           ...p,
+          studentId: p.studentId || user?.studentId || '',
           tenthPercentage: p.tenthPercentage || '',
           pucCgpa: p.pucCgpa || '',
           btechCgpa: p.btechCgpa || '',
@@ -290,7 +291,7 @@ export default function StudentProfile() {
             <div className="flex items-center space-x-2">
               <h2 className="text-2xl font-bold text-white">{profile.fullName || 'Student Profile'}</h2>
               <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-700 text-slate-200 uppercase font-mono">
-                {profile.studentId}
+                {profile.studentId || user?.studentId || '—'}
               </span>
             </div>
             <p className="text-xs text-slate-300 mt-1">
@@ -380,7 +381,7 @@ export default function StudentProfile() {
               <input
                 type="text"
                 disabled
-                value={profile.studentId}
+                value={profile.studentId || user?.studentId || ''}
                 className="w-full px-3 py-2 bg-slate-900/50 border border-slate-800 rounded-lg text-slate-400 font-mono cursor-not-allowed"
               />
             </div>

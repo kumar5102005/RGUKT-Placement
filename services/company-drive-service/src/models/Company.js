@@ -20,13 +20,17 @@ const VERIFICATION_STATUS = ['PENDING', 'VERIFIED', 'REJECTED'];
 
 const recruiterEntrySchema = new mongoose.Schema(
   {
-    userId: { type: String, required: true },
-    fullName: { type: String, required: true },
-    email: { type: String, required: true },
-    role: { type: String, enum: ['PRIMARY', 'SECONDARY'], default: 'PRIMARY' },
+    userId: { type: String, default: null },
+    fullName: { type: String, required: true, trim: true },
+    email: { type: String, required: true, lowercase: true, trim: true },
+    designation: { type: String, default: 'Recruiter', trim: true },
+    phone: { type: String, default: '', trim: true },
+    role: { type: String, enum: ['PRIMARY', 'SECONDARY'], default: 'SECONDARY' },
+    status: { type: String, enum: ['ACTIVE', 'INVITED', 'INACTIVE'], default: 'ACTIVE' },
+    temporaryPassword: { type: String, default: '' },
     addedAt: { type: Date, default: Date.now },
   },
-  { _id: false }
+  { _id: true }
 );
 
 const companySchema = new mongoose.Schema(

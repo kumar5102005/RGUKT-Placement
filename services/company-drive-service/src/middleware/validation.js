@@ -179,18 +179,14 @@ export function validateVerification(req, res, next) {
  */
 export function validateAddRecruiter(req, res, next) {
   const errors = [];
-  const { userId, fullName, email, role } = req.body;
-
-  if (!userId || typeof userId !== 'string') {
-    errors.push({ field: 'userId', message: 'Recruiter userId is required' });
-  }
+  const { fullName, email, role } = req.body;
 
   if (!fullName || typeof fullName !== 'string' || fullName.trim().length < 2) {
-    errors.push({ field: 'fullName', message: 'Recruiter full name is required' });
+    errors.push({ field: 'fullName', message: 'Recruiter full name must be at least 2 characters' });
   }
 
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    errors.push({ field: 'email', message: 'A valid recruiter email is required' });
+    errors.push({ field: 'email', message: 'A valid recruiter work email is required' });
   }
 
   if (role !== undefined && !['PRIMARY', 'SECONDARY'].includes(role)) {

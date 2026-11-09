@@ -88,7 +88,7 @@ const studentProfileSchema = new mongoose.Schema(
       type: String,
       required: true,
       unique: true,
-      uppercase: true,
+      lowercase: true,
       trim: true,
       index: true,
     },

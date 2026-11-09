@@ -225,8 +225,8 @@ export default function JobDetails() {
               <div className="flex flex-wrap items-center gap-2 mb-1.5">
                 <h1 className="text-2xl sm:text-3xl font-bold text-white leading-tight">{job.title}</h1>
                 <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${job.status === 'ACTIVE'
-                    ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                    : 'bg-slate-700 text-slate-300 border-slate-600'
+                  ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                  : 'bg-slate-700 text-slate-300 border-slate-600'
                   }`}>
                   {job.status}
                 </span>
@@ -295,10 +295,10 @@ export default function JobDetails() {
       {/* Student Real-Time Eligibility Card */}
       {user?.role === 'STUDENT' && (
         <div className={`p-6 rounded-2xl border transition ${evaluating
-            ? 'bg-slate-800/60 border-slate-700'
-            : eligibilityResult?.isEligible
-              ? 'bg-emerald-950/30 border-emerald-500/40'
-              : 'bg-rose-950/20 border-rose-500/30'
+          ? 'bg-slate-800/60 border-slate-700'
+          : eligibilityResult?.isEligible
+            ? 'bg-emerald-950/30 border-emerald-500/40'
+            : 'bg-rose-950/20 border-rose-500/30'
           }`}>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
             <div className="flex items-center gap-3">
@@ -325,8 +325,8 @@ export default function JobDetails() {
 
             {eligibilityResult && (
               <span className={`px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider ${eligibilityResult.isEligible
-                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                  : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
                 }`}>
                 {eligibilityResult.isEligible ? 'Eligible' : 'Ineligible'}
               </span>
@@ -597,7 +597,7 @@ export default function JobDetails() {
                       </span>
                     </button>
                     <p className="text-[11px] text-slate-400 text-center">
-                      Applications are processed through the Phase 8 Recruitment Workflow.
+                      Applications are processed through the Campus Placement Recruitment Workflow.
                     </p>
                   </>
                 )}
