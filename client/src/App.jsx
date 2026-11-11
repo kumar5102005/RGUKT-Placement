@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Link, NavLink, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
@@ -34,46 +34,79 @@ import {
   GraduationCap,
   Building2,
   Calendar,
+  Menu,
+  X,
 } from 'lucide-react';
+
+const ResumeViewer = React.lazy(() => import('./pages/ResumeViewer.jsx'));
+
+function SuspendedResumeViewer() {
+  return (
+    <React.Suspense fallback={<p className="py-12 text-center text-sm text-slate-400">Loading secure resume viewer...</p>}>
+      <ResumeViewer />
+    </React.Suspense>
+  );
+}
 
 function Header() {
   const { user, isAuthenticated } = useAuth();
   const location = useLocation();
-  const navigationRef = useRef(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const navClass = ({ isActive }) =>
     `flex shrink-0 items-center gap-1.5 px-2.5 py-1.5 rounded-md font-medium transition ${
       isActive
         ? 'bg-emerald-600 text-white'
         : 'text-slate-200 hover:bg-slate-800 hover:text-emerald-400'
     }`;
+  const mobileNavigationLinks = [
+    { to: '/', label: 'Overview', icon: Activity, end: true },
+    { to: '/services', label: 'Services', icon: Server },
+  ];
+
+  if (isAuthenticated) {
+    mobileNavigationLinks.push(
+      { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, end: true },
+      { to: '/drives', label: 'Placement Drives', icon: Calendar },
+      { to: '/jobs', label: 'Jobs', icon: Briefcase },
+      { to: '/applications', label: 'Applications', icon: FileText },
+    );
+
+    if (user?.role === 'STUDENT') {
+      mobileNavigationLinks.push({ to: '/profile', label: 'My Profile', icon: GraduationCap });
+    } else if (user?.role === 'RECRUITER') {
+      mobileNavigationLinks.push(
+        { to: '/company/profile', label: 'Company', icon: Building2 },
+        { to: '/recruiter/jobs', label: 'Postings', icon: Briefcase },
+      );
+    } else if (user?.role === 'ADMIN') {
+      mobileNavigationLinks.push(
+        { to: '/recruiter/jobs', label: 'Job Postings', icon: Briefcase },
+        { to: '/admin/students', label: 'Students', icon: GraduationCap },
+        { to: '/admin/companies', label: 'Companies', icon: Building2 },
+        { to: '/admin/users', label: 'Users', icon: Users },
+        { to: '/account', label: 'My Profile', icon: UserRound },
+      );
+    }
+  }
 
   useEffect(() => {
-    const navigation = navigationRef.current;
-    const activeLink = navigation?.querySelector('[aria-current="page"]');
-    if (!navigation || !activeLink) return;
-    const navigationBounds = navigation.getBoundingClientRect();
-    const linkBounds = activeLink.getBoundingClientRect();
-    if (linkBounds.left < navigationBounds.left) {
-      navigation.scrollLeft -= navigationBounds.left - linkBounds.left;
-    } else if (linkBounds.right > navigationBounds.right) {
-      navigation.scrollLeft += linkBounds.right - navigationBounds.right;
-    }
+    setMobileMenuOpen(false);
   }, [location.pathname]);
 
   return (
     <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-50">
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-16 flex items-center gap-3">
-        <Link to="/" className="flex items-center space-x-3">
-          <div className="w-10 h-10 rounded-lg bg-emerald-600 flex items-center justify-center font-bold text-white shadow-lg shadow-emerald-500/20">
+      <div className="relative max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-16 flex min-w-0 items-center gap-3">
+        <Link to="/" className="flex min-w-0 shrink-0 items-center space-x-3">
+          <div className="w-10 h-10 shrink-0 rounded-lg bg-emerald-600 flex items-center justify-center font-bold text-white shadow-lg shadow-emerald-500/20">
             RG
           </div>
-          <div className="hidden sm:block">
+          <div className="hidden min-w-0 sm:block">
             <h1 className="font-semibold text-base sm:text-lg text-white leading-tight">RGUKT Ongole</h1>
             <p className="text-[11px] text-emerald-400">Placement Hub • Microservices Platform</p>
           </div>
         </Link>
         <div className="ml-auto flex min-w-0 items-center gap-2">
-        <nav ref={navigationRef} aria-label="Main navigation" className="flex min-w-0 items-center gap-1 overflow-x-auto text-xs sm:gap-2 sm:text-sm">
+        <nav aria-label="Main navigation" className="hidden shrink-0 items-center gap-1 text-xs sm:gap-2 sm:text-sm xl:flex">
           <Link to="/" className="shrink-0 px-2.5 py-1.5 rounded-md hover:bg-slate-800 text-slate-300 hover:text-white transition">Overview</Link>
           <Link to="/services" className="hidden shrink-0 px-2.5 py-1.5 rounded-md hover:bg-slate-800 text-slate-300 hover:text-white transition md:inline-block">Services</Link>
 
@@ -86,7 +119,7 @@ function Header() {
                 aria-label="Dashboard"
               >
                 <LayoutDashboard className="w-3.5 h-3.5" />
-                <span className="hidden xl:inline">Dashboard</span>
+                <span className="sr-only">Dashboard</span>
               </NavLink>
 
               <NavLink
@@ -96,7 +129,7 @@ function Header() {
                 title="Placement Drives"
               >
                 <Calendar className="w-4 h-4" />
-                <span className="hidden xl:inline">Placement Drives</span>
+                <span className="sr-only">Placement Drives</span>
               </NavLink>
 
               <NavLink
@@ -106,7 +139,7 @@ function Header() {
                 title="Jobs"
               >
                 <Briefcase className="w-4 h-4" />
-                <span className="hidden xl:inline">Jobs</span>
+                <span className="sr-only">Jobs</span>
               </NavLink>
 
               <NavLink
@@ -116,7 +149,7 @@ function Header() {
                 title="Applications"
               >
                 <FileText className="w-4 h-4" />
-                <span className="hidden xl:inline">Applications</span>
+                <span className="sr-only">Applications</span>
               </NavLink>
 
               {user?.role === 'STUDENT' && (
@@ -127,7 +160,7 @@ function Header() {
                   title="My Profile"
                 >
                   <GraduationCap className="w-4 h-4" />
-                  <span className="hidden xl:inline">My Profile</span>
+                  <span className="sr-only">My Profile</span>
                 </NavLink>
               )}
 
@@ -140,7 +173,7 @@ function Header() {
                     title="Company"
                   >
                     <Building2 className="w-4 h-4" />
-                    <span className="hidden xl:inline">Company</span>
+                    <span className="sr-only">Company</span>
                   </NavLink>
                   <NavLink
                     to="/recruiter/jobs"
@@ -149,7 +182,7 @@ function Header() {
                     title="Postings"
                   >
                     <Briefcase className="w-4 h-4" />
-                    <span className="hidden xl:inline">Postings</span>
+                    <span className="sr-only">Postings</span>
                   </NavLink>
                 </>
               )}
@@ -163,7 +196,7 @@ function Header() {
                     title="Job Postings"
                   >
                     <Briefcase className="w-4 h-4" />
-                    <span className="hidden xl:inline">Job Postings</span>
+                    <span className="sr-only">Job Postings</span>
                   </NavLink>
                   <NavLink
                     to="/admin/students"
@@ -172,7 +205,7 @@ function Header() {
                     title="Students"
                   >
                     <GraduationCap className="w-4 h-4" />
-                    <span className="hidden xl:inline">Students</span>
+                    <span className="sr-only">Students</span>
                   </NavLink>
                   <NavLink
                     to="/admin/companies"
@@ -181,7 +214,7 @@ function Header() {
                     title="Companies"
                   >
                     <Building2 className="w-4 h-4" />
-                    <span className="hidden xl:inline">Companies</span>
+                    <span className="sr-only">Companies</span>
                   </NavLink>
                   <NavLink
                     to="/admin/users"
@@ -190,7 +223,7 @@ function Header() {
                     title="Users"
                   >
                     <Users className="w-4 h-4" />
-                    <span className="hidden xl:inline">Users</span>
+                    <span className="sr-only">Users</span>
                   </NavLink>
                   <NavLink
                     to="/account"
@@ -199,13 +232,23 @@ function Header() {
                     title="My Profile"
                   >
                     <UserRound className="w-4 h-4" />
-                    <span className="hidden xl:inline">My Profile</span>
+                    <span className="sr-only">My Profile</span>
                   </NavLink>
                 </>
               )}
             </>
           ) : null}
         </nav>
+        <button
+          type="button"
+          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-200 transition hover:bg-slate-800 hover:text-white xl:hidden"
+          aria-label={mobileMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
+          aria-expanded={mobileMenuOpen}
+          aria-controls="mobile-main-navigation"
+          onClick={() => setMobileMenuOpen((open) => !open)}
+        >
+          {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+        </button>
         {isAuthenticated ? (
           <div className="shrink-0 border-l border-slate-700/60 pl-2 sm:pl-3">
             <HeaderProfileMenu />
@@ -229,6 +272,32 @@ function Header() {
           </div>
         )}
         </div>
+        {mobileMenuOpen && (
+          <nav
+            id="mobile-main-navigation"
+            aria-label="Mobile main navigation"
+            className="absolute left-3 right-3 top-full z-[60] mt-2 max-h-[calc(100vh-5rem)] overflow-y-auto rounded-xl border border-slate-700 bg-slate-900 p-2 shadow-2xl sm:left-auto sm:right-6 sm:w-80 xl:hidden"
+          >
+            {mobileNavigationLinks.map(({ to, label, icon: Icon, end }) => (
+              <NavLink
+                key={to}
+                to={to}
+                end={end}
+                onClick={() => setMobileMenuOpen(false)}
+                className={({ isActive }) =>
+                  `flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
+                    isActive
+                      ? 'bg-emerald-600 text-white'
+                      : 'text-slate-200 hover:bg-slate-800 hover:text-emerald-400'
+                  }`
+                }
+              >
+                <Icon className="h-4 w-4 shrink-0" />
+                <span>{label}</span>
+              </NavLink>
+            ))}
+          </nav>
+        )}
       </div>
     </header>
   );
@@ -360,13 +429,13 @@ function ServicesPage() {
       </div>
       <div className="bg-slate-800/40 border border-slate-700 rounded-xl p-6 font-mono text-sm space-y-3">
         <div className="text-cyan-400 font-bold">Job Management Service Endpoints:</div>
-        <div className="text-slate-300">• POST   /api/v1/jobs (Create job posting - RECRUITER / ADMIN)</div>
+        <div className="text-slate-300">• POST   /api/v1/jobs (Create job posting - authorized RECRUITER)</div>
         <div className="text-slate-300">• GET    /api/v1/jobs (List &amp; filter jobs with pagination - Authenticated)</div>
         <div className="text-slate-300">• GET    /api/v1/jobs/my (Get recruiter company job postings - RECRUITER)</div>
         <div className="text-slate-300">• GET    /api/v1/jobs/:id (Get full job specifications &amp; rounds - Authenticated)</div>
-        <div className="text-slate-300">• PUT    /api/v1/jobs/:id (Update job parameters - Owner RECRUITER / ADMIN)</div>
-        <div className="text-slate-300">• DELETE /api/v1/jobs/:id (Remove job posting - Owner RECRUITER / ADMIN)</div>
-        <div className="text-slate-300">• PATCH  /api/v1/jobs/:id/status (Toggle status ACTIVE/PAUSED/CLOSED)</div>
+        <div className="text-slate-300">• PUT    /api/v1/jobs/:id (Update own company job - authorized RECRUITER)</div>
+        <div className="text-slate-300">• DELETE /api/v1/jobs/:id (Archive job while retaining applications - authorized RECRUITER)</div>
+        <div className="text-slate-300">• PATCH  /api/v1/jobs/:id/status (Change status - authorized RECRUITER)</div>
         <div className="text-slate-300">• POST   /api/v1/jobs/:id/check-eligibility (Evaluate candidate profile against rules)</div>
         <div className="text-slate-300">• GET    /api/v1/jobs/internal/:id (Internal microservice synchronous query)</div>
       </div>
@@ -513,6 +582,38 @@ export default function App() {
                 element={
                   <ProtectedRoute allowedRoles={['STUDENT', 'ADMIN', 'RECRUITER']}>
                     <ApplicationTracker />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/resume/profile"
+                element={
+                  <ProtectedRoute allowedRoles={['STUDENT']}>
+                    <SuspendedResumeViewer />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/resume/application/:applicationId"
+                element={
+                  <ProtectedRoute allowedRoles={['STUDENT', 'RECRUITER', 'ADMIN']}>
+                    <SuspendedResumeViewer />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/resume/student/:studentId"
+                element={
+                  <ProtectedRoute allowedRoles={['ADMIN']}>
+                    <SuspendedResumeViewer />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/resume/drive/:driveId/registration/:registrationId"
+                element={
+                  <ProtectedRoute allowedRoles={['STUDENT', 'RECRUITER', 'ADMIN']}>
+                    <SuspendedResumeViewer />
                   </ProtectedRoute>
                 }
               />

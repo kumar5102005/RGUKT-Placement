@@ -123,7 +123,7 @@ export default function JobList() {
               className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-sm transition shadow-lg shadow-emerald-600/20"
             >
               <Plus className="w-4 h-4" />
-              <span>{user?.role === 'ADMIN' ? 'Manage Job Postings' : 'Post / Manage Jobs'}</span>
+              <span>{user?.role === 'ADMIN' ? 'Monitor Job Postings' : 'Post / Manage Jobs'}</span>
             </Link>
           </div>
         )}
@@ -412,4 +412,3 @@ export default function JobList() {
     </div>
   );
 }
-

@@ -36,7 +36,7 @@ router.get('/', authenticate, getJobs);
 router.post(
   '/',
   authenticate,
-  authorize('RECRUITER', 'ADMIN'),
+  authorize('RECRUITER'),
   validateJobCreation,
   createJob
 );
@@ -48,19 +48,19 @@ router.get('/:id', authenticate, getJobById);
 router.put(
   '/:id',
   authenticate,
-  authorize('RECRUITER', 'ADMIN'),
+  authorize('RECRUITER'),
   validateJobUpdate,
   updateJob
 );
 
 // ─── Delete Job ──────────────────────────────────────────────────────────────
-router.delete('/:id', authenticate, authorize('RECRUITER', 'ADMIN'), deleteJob);
+router.delete('/:id', authenticate, authorize('RECRUITER'), deleteJob);
 
 // ─── Update Status ───────────────────────────────────────────────────────────
 router.patch(
   '/:id/status',
   authenticate,
-  authorize('RECRUITER', 'ADMIN'),
+  authorize('RECRUITER'),
   updateJobStatus
 );
 

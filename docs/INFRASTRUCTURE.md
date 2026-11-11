@@ -69,9 +69,16 @@ The containerized infrastructure enforces database-per-service boundaries, bridg
 - **Dedicated Persistent Volumes**:
   - `auth_data`: Mounts to `/data/db` on `auth-db`.
   - `student_data`: Mounts to `/data/db` on `student-db`.
+  - `student_uploads`: Mounts to `/app/uploads` on `student-service` when local resume storage is enabled.
   - `drive_data`: Mounts to `/data/db` on `drive-db`.
   - `application_data`: Mounts to `/data/db` on `application-db`.
   - `notification_data`: Mounts to `/data/db` on `notification-db`.
+
+### Private Resume Storage
+
+Local Compose runs default to `RESUME_STORAGE_PROVIDER=local`; uploaded documents use unique, non-overwriting keys in the persistent `student_uploads` volume. Preserve that volume when recreating containers. If a deployment previously stored files only in a container layer, those files must be copied into the mounted volume before replacing that container; missing objects cannot be reconstructed from MongoDB references alone.
+
+For production, configure `RESUME_STORAGE_PROVIDER=s3`, `RESUME_S3_BUCKET`, and `RESUME_S3_REGION`, and attach an IAM role to Student Service with narrowly scoped `s3:PutObject`, `s3:GetObject`, and `s3:HeadObject` access. Configure S3 Block Public Access and do not use public ACLs. The service streams files through authenticated APIs and does not issue public or pre-signed URLs. MongoDB `ResumeDocument` records retain the owner, immutable object key, optional checksum, and metadata; applications store the corresponding document ID and key. To migrate existing local files, copy each referenced object to S3 using its exact storage key, verify the bytes/checksum, and only then switch the provider; never change MongoDB application references during that transfer.
 
 ---
 

@@ -472,7 +472,12 @@ export async function verifyCompany(req, res) {
  * Helper to add a recruiter entry to a company document.
  */
 async function attachRecruiterToCompany(company, recruiter, recruiterData) {
-  const { designation, phone, canManageRecruitment = false } = recruiterData;
+  const {
+    designation,
+    phone,
+    canManageJobs = false,
+    canManageRecruitment = false,
+  } = recruiterData;
   const cleanEmail = recruiter.email.toLowerCase().trim();
 
   const duplicate = company.recruiters.some(
@@ -492,6 +497,7 @@ async function attachRecruiterToCompany(company, recruiter, recruiterData) {
     designation: designation ? designation.trim() : 'Recruiter',
     phone: phone ? phone.trim() : '',
     role: 'SECONDARY',
+    canManageJobs: Boolean(canManageJobs),
     canManageRecruitment: Boolean(canManageRecruitment),
     status: 'ACTIVE',
     addedAt: new Date(),
@@ -741,18 +747,20 @@ export async function updateOwnRecruiterPermissions(req, res) {
         error: { code: 'INVALID_PERMISSION_TARGET', message: 'Primary recruiter permissions cannot be changed here.' },
       });
     }
-    if (typeof req.body.canManageRecruitment !== 'boolean') {
+    const permissionFields = ['canManageJobs', 'canManageRecruitment'];
+    const providedFields = permissionFields.filter((field) => req.body[field] !== undefined);
+    if (providedFields.length === 0 || providedFields.some((field) => typeof req.body[field] !== 'boolean')) {
       return res.status(422).json({
         success: false,
-        error: { code: 'VALIDATION_ERROR', message: 'canManageRecruitment must be a boolean.' },
+        error: { code: 'VALIDATION_ERROR', message: 'At least one recruiter permission must be provided as a boolean.' },
       });
     }
 
-    recruiter.canManageRecruitment = req.body.canManageRecruitment;
+    for (const field of providedFields) recruiter[field] = req.body[field];
     await company.save();
     return res.status(200).json({
       success: true,
-      message: 'Recruiter recruitment permissions updated.',
+      message: 'Recruiter permissions updated.',
       data: { recruiter },
     });
   } catch (error) {

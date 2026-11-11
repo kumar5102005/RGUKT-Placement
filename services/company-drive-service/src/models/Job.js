@@ -183,6 +183,14 @@ const jobSchema = new mongoose.Schema(
       default: 'ACTIVE',
       index: true,
     },
+    archivedAt: {
+      type: Date,
+      default: null,
+    },
+    archivedBy: {
+      type: String,
+      default: '',
+    },
     createdBy: {
       type: String, // userId
       required: true,

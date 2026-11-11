@@ -77,7 +77,19 @@
      btechCgpa: Number,      // Indexed for eligibility queries
      activeBacklogs: Number, // Indexed for eligibility queries
      backlogHistory: Number,
-     resumeUrl: String,
+     resumeUrl: String,         // Authenticated profile download route
+     resumeDocumentId: String,  // Current immutable ResumeDocument._id
+     resumeFileName: String,    // Current private storage key
+     resumeVersions: [          // Historical metadata only; bytes are not duplicated
+       {
+         documentId: String,
+         fileName: String,
+         storageKey: String,
+         originalName: String,
+         mimeType: String,
+         uploadedAt: Date
+       }
+     ],
      portfolioUrl: String,
      githubUrl: String,
      linkedinUrl: String,
@@ -95,6 +107,21 @@
      - `{ userId: 1 }`: Unique
      - `{ branch: 1, btechCgpa: -1 }`: Compound index for filtering
      - `{ activeBacklogs: 1 }`: Index for eligibility filtering
+
+2. `resumedocuments`
+   ```javascript
+   {
+     _id: ObjectId,
+     userId: String,       // Owning student account
+     storageKey: String,   // Unique, immutable object key
+     originalName: String,
+     mimeType: String,
+     size: Number,        // May be absent for legacy documents
+     sha256: String,      // Empty for legacy documents without a recorded digest
+     uploadedAt: Date
+   }
+   ```
+   ResumeDocument owns the immutable version metadata. The document bytes live in the configured private storage provider (local persistent volume in development or private S3 in production).
 
 ---
 
@@ -180,7 +207,13 @@
      studentCgpa: Number,      // Denormalized snapshot
      companyName: String,      // Denormalized snapshot
      driveTitle: String,       // Denormalized snapshot
-     resumeUrl: String,        // Resume version at time of application
+     resumeUrl: String,        // Authenticated application download route
+     resumeDocumentId: String, // Exact ResumeDocument._id submitted
+     resumeStorageKey: String, // Immutable storage key captured at submission
+     resumeFileName: String,   // Legacy-compatible key field
+     resumeOriginalName: String,
+     resumeMimeType: String,
+     resumeSnapshotAt: Date,
      status: String,           // "APPLIED", "SHORTLISTED", "OA_CLEARED", "INTERVIEW_CLEARED", "OFFERED", "REJECTED"
      recruitmentRounds: [
        {

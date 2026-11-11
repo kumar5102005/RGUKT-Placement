@@ -78,10 +78,13 @@ const certificationSchema = new mongoose.Schema(
 
 const resumeVersionSchema = new mongoose.Schema(
   {
+    documentId: { type: String, default: "" },
     fileName: { type: String, required: true },
+    storageKey: { type: String, default: "" },
     originalName: { type: String, required: true },
     mimeType: { type: String, required: true },
-    uploadedAt: { type: Date, required: true },
+    size: { type: Number },
+    uploadedAt: { type: Date },
   },
   { _id: false }
 );
@@ -190,6 +193,7 @@ const studentProfileSchema = new mongoose.Schema(
     resumeMimeType: String,
     resumeSize: Number,
     resumeUploadedAt: Date,
+    resumeDocumentId: String,
     resumeVersions: {
       type: [resumeVersionSchema],
       default: [],

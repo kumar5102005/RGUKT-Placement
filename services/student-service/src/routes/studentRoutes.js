@@ -6,6 +6,7 @@ import {
   getOwnResume,
   getStudentResume,
   getInternalResume,
+  getInternalResumeReference,
   checkEligibility,
   searchStudents,
   getStudentById,
@@ -31,6 +32,7 @@ router.get("/eligibility-check", authenticate, checkEligibility);
 // ── Administrator Search & Verification Routes ────────────────────────────────
 router.get("/search", authenticate, authorize("ADMIN"), searchStudents);
 router.get("/internal/:id/resume", requireInternalServiceKey, getInternalResume);
+router.get("/internal/:id/resume-reference", requireInternalServiceKey, getInternalResumeReference);
 router.get("/:id/resume", authenticate, authorize("ADMIN", "STUDENT"), getStudentResume);
 router.get("/:id", authenticate, authorize("ADMIN"), getStudentById);
 router.patch("/:id/verify", authenticate, authorize("ADMIN"), verifyStudentProfile);

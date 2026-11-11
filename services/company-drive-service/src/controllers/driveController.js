@@ -3,11 +3,16 @@ import { Readable } from 'node:stream';
 import PlacementDrive from '../models/PlacementDrive.js';
 import DriveRegistration from '../models/DriveRegistration.js';
 import Company from '../models/Company.js';
+import Job from '../models/Job.js';
 import { evaluateJobEligibility } from '../utils/eligibilityEvaluator.js';
 
 const STUDENT_SERVICE_URL = process.env.STUDENT_SERVICE_URL || 'http://student-service:4002';
 const NOTIFICATION_SERVICE_URL = process.env.NOTIFICATION_SERVICE_URL || 'http://notification-service:4005';
 const SERVICE_API_KEY = process.env.SERVICE_API_KEY;
+
+export function shouldArchivePlacementDrive(registrationCount, linkedJob) {
+  return registrationCount > 0 || Boolean(linkedJob);
+}
 
 async function getDriveRecruiterAccess(drive, userId) {
   const company = await Company.findOne({
@@ -246,7 +251,8 @@ export async function getPlacementDriveById(req, res) {
       });
     }
 
-    if (req.user?.role === 'STUDENT' && drive.driveStatus === 'DRAFT') {
+    if (req.user?.role === 'STUDENT' &&
+        !['UPCOMING', 'REGISTRATION_OPEN', 'REGISTRATION_CLOSED', 'IN_PROGRESS', 'COMPLETED'].includes(drive.driveStatus)) {
       return res.status(404).json({
         success: false,
         error: { code: 'DRIVE_NOT_FOUND', message: 'Placement drive is in draft mode.' },
@@ -332,12 +338,12 @@ export async function updatePlacementDrive(req, res) {
 
 /**
  * DELETE /api/v1/drives/placement-drives/:id
- * Delete a placement drive.
+ * Delete an unreferenced drive or cancel it while preserving related history.
  * Access: ADMIN
  */
 export async function deletePlacementDrive(req, res) {
   try {
-    const drive = await PlacementDrive.findByIdAndDelete(req.params.id);
+    const drive = await PlacementDrive.findById(req.params.id);
     if (!drive) {
       return res.status(404).json({
         success: false,
@@ -345,15 +351,30 @@ export async function deletePlacementDrive(req, res) {
       });
     }
 
-    // Decrement company placement drive count
-    await Company.findByIdAndUpdate(drive.companyId, { $inc: { placementDriveCount: -1 } });
+    const [registrationCount, linkedJob] = await Promise.all([
+      DriveRegistration.countDocuments({ driveId: drive._id }),
+      Job.findOne({
+        _id: { $in: (drive.jobRoles || []).map((role) => role.jobId).filter(Boolean) },
+      }).select('_id').lean(),
+    ]);
 
-    // Clean up registrations
-    await DriveRegistration.deleteMany({ driveId: drive._id });
+    if (shouldArchivePlacementDrive(registrationCount, linkedJob)) {
+      drive.driveStatus = 'CANCELLED';
+      await drive.save();
+      return res.status(200).json({
+        success: true,
+        message: 'Drive cancelled because it has registration or job history. Existing records were retained.',
+        data: { drive, archived: true },
+      });
+    }
+
+    await drive.deleteOne();
+    await Company.findByIdAndUpdate(drive.companyId, { $inc: { placementDriveCount: -1 } });
 
     return res.status(200).json({
       success: true,
-      message: 'Placement drive and associated registrations deleted.',
+      message: 'Unreferenced placement drive deleted.',
+      data: { archived: false },
     });
   } catch (err) {
     return res.status(500).json({
@@ -371,6 +392,12 @@ export async function deletePlacementDrive(req, res) {
 export async function updateDriveStatus(req, res) {
   try {
     const { driveStatus } = req.body;
+    if (!['DRAFT', 'UPCOMING', 'REGISTRATION_OPEN', 'REGISTRATION_CLOSED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'].includes(driveStatus)) {
+      return res.status(422).json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'Invalid placement drive status.' },
+      });
+    }
     const drive = await PlacementDrive.findById(req.params.id);
 
     if (!drive) {

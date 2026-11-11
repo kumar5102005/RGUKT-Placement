@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import {
   Users,
@@ -265,15 +266,14 @@ export default function AdminStudentSearch() {
 
                     <td className="py-3 px-4">
                       {s.resumeUrl ? (
-                        <a
-                          href={`/api/v1/students/${encodeURIComponent(s._id)}/resume`}
-                          target="_blank"
-                          rel="noreferrer"
+                        <Link
+                          to={`/resume/student/${encodeURIComponent(s._id)}`}
+                          state={{ fileName: s.resumeFileName || s.resumeOriginalName || 'resume.pdf' }}
                           className="inline-flex items-center space-x-1 text-emerald-400 hover:text-emerald-300 font-medium transition"
                         >
                           <FileText className="w-3.5 h-3.5" />
                           <span>View Resume</span>
-                        </a>
+                        </Link>
                       ) : (
                         <span className="text-slate-500 italic">Not Uploaded</span>
                       )}

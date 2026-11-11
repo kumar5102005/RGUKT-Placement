@@ -1,12 +1,32 @@
 import { StudentProfile } from "../models/StudentProfile.js";
+import { ResumeDocument } from "../models/ResumeDocument.js";
 import { calculateProfileCompletion } from "../utils/completionCalculator.js";
-import fs from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import mongoose from "mongoose";
 import path from "node:path";
+import { resumeStorage } from "../storage/resumeStorage.js";
 
 const COMPANY_DRIVE_SERVICE_URL =
   process.env.COMPANY_DRIVE_SERVICE_URL || "http://company-drive-service:4003";
 const SERVICE_API_KEY = process.env.SERVICE_API_KEY;
-const RESUME_UPLOAD_DIR = path.resolve(process.env.RESUME_UPLOAD_DIR || "uploads/resumes");
+const RESUME_MIME_TYPES = {
+  ".pdf": "application/pdf",
+  ".doc": "application/msword",
+  ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+};
+
+function hasExpectedResumeSignature(extension, buffer) {
+  if (extension === ".pdf") {
+    return buffer.subarray(0, 1024).includes(Buffer.from("%PDF-"));
+  }
+  if (extension === ".doc") {
+    return buffer.subarray(0, 8).equals(Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]));
+  }
+  if (extension === ".docx") {
+    return buffer.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
+  }
+  return false;
+}
 
 function findProfileByIdentifier(identifier) {
   const cleanId = String(identifier || "").trim();
@@ -18,60 +38,146 @@ function findProfileByIdentifier(identifier) {
   return StudentProfile.findOne({ $or: queries });
 }
 
-async function sendResume(res, profile, requestedFileName) {
-  const fileName = requestedFileName || profile.resumeFileName;
+function findProfileResumeVersion(profile, fileName) {
+  if (!profile || !fileName) return null;
   const versions = [
     ...(profile.resumeVersions || []),
     ...(profile.resumeFileName
       ? [{
+          documentId: profile.resumeDocumentId || "",
           fileName: profile.resumeFileName,
+          storageKey: profile.resumeFileName,
           originalName: profile.resumeOriginalName || profile.resumeFileName,
           mimeType: profile.resumeMimeType || "application/octet-stream",
+          size: profile.resumeSize,
+          uploadedAt: profile.resumeUploadedAt || null,
         }]
       : []),
   ];
-  const version = versions.find((candidate) => candidate.fileName === fileName);
-  if (!version || !fileName || path.basename(fileName) !== fileName) {
-    return res.status(404).json({
-      success: false,
-      error: { code: "RESUME_NOT_FOUND", message: "Resume file was not found." },
-    });
+  return versions.find((version) =>
+    version.fileName === fileName || version.storageKey === fileName
+  ) || null;
+}
+
+async function findResumeDocument(userId, { documentId, fileName }, profile) {
+  let document = null;
+  if (documentId) {
+    if (!mongoose.isValidObjectId(documentId)) {
+      return { error: { code: "RESUME_NOT_FOUND", message: "Resume document was not found." } };
+    }
+    document = await ResumeDocument.findOne({ _id: documentId, userId });
+    if (!document) {
+      return { error: { code: "RESUME_NOT_FOUND", message: "Resume document was not found." } };
+    }
+  } else {
+    if (!fileName || path.basename(fileName) !== fileName) {
+      return { error: { code: "RESUME_NOT_FOUND", message: "Resume document was not found." } };
+    }
+    document = await ResumeDocument.findOne({ userId, storageKey: fileName });
   }
 
-  const absolutePath = path.resolve(RESUME_UPLOAD_DIR, fileName);
-  if (path.dirname(absolutePath) !== RESUME_UPLOAD_DIR) {
-    return res.status(404).json({
-      success: false,
-      error: { code: "RESUME_NOT_FOUND", message: "Resume file was not found." },
-    });
+  if (document) {
+    if (!(await resumeStorage.exists(document.storageKey))) {
+      return {
+        error: {
+          code: "RESUME_FILE_MISSING",
+          message: "The original submitted document is unavailable in storage.",
+        },
+      };
+    }
+    return {
+      documentId: String(document._id),
+      storageKey: document.storageKey,
+      fileName: document.storageKey,
+      originalName: document.originalName,
+      mimeType: document.mimeType,
+      size: document.size,
+      sha256: document.sha256,
+      uploadedAt: document.uploadedAt,
+    };
   }
 
+  const legacyVersion = findProfileResumeVersion(profile, fileName);
+  if (!legacyVersion) {
+    return { error: { code: "RESUME_NOT_FOUND", message: "Resume document was not found." } };
+  }
+  const storageKey = legacyVersion.storageKey || legacyVersion.fileName;
+  if (!(await resumeStorage.exists(storageKey))) {
+    return {
+      error: {
+        code: "RESUME_FILE_MISSING",
+        message: "The original submitted document is unavailable in storage.",
+      },
+    };
+  }
+  return {
+    documentId: legacyVersion.documentId || "",
+    storageKey,
+    fileName: storageKey,
+    originalName: legacyVersion.originalName || storageKey,
+    mimeType: legacyVersion.mimeType || "application/octet-stream",
+    size: legacyVersion.size || 0,
+    sha256: legacyVersion.sha256 || "",
+    uploadedAt: legacyVersion.uploadedAt || null,
+  };
+}
+
+async function recordLegacyResumeDocument(userId, version) {
+  if (version.documentId) return version.documentId;
   try {
-    const fileStat = await fs.promises.stat(absolutePath);
-    if (!fileStat.isFile()) {
-      return res.status(404).json({
-        success: false,
-        error: { code: "RESUME_NOT_FOUND", message: "Resume file was not found." },
-      });
-    }
+    const document = await ResumeDocument.findOneAndUpdate(
+      { userId, storageKey: version.storageKey },
+      {
+        $setOnInsert: {
+          userId,
+          storageKey: version.storageKey,
+          originalName: version.originalName,
+          mimeType: version.mimeType,
+          size: version.size ?? null,
+          sha256: version.sha256 || "",
+          uploadedAt: version.uploadedAt || null,
+        },
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+    return String(document._id);
   } catch (error) {
-    if (error.code === "ENOENT") {
-      return res.status(404).json({
-        success: false,
-        error: { code: "RESUME_NOT_FOUND", message: "Resume file was not found." },
-      });
-    }
-    throw error;
+    if (error.code !== 11000) throw error;
+    const document = await ResumeDocument.findOne({ userId, storageKey: version.storageKey });
+    if (!document) throw error;
+    return String(document._id);
   }
+}
 
-  const contentType = version.mimeType || "application/octet-stream";
+async function resolveResumeVersion(userId, profile, requestedFileName, requestedDocumentId) {
+  const fileName = requestedFileName || profile?.resumeFileName;
+  return findResumeDocument(
+    userId,
+    { documentId: requestedDocumentId || (!requestedFileName ? profile?.resumeDocumentId : ""), fileName },
+    profile
+  );
+}
+
+async function sendResume(res, userId, profile, requestedFileName, requestedDocumentId) {
+  const resolved = await resolveResumeVersion(
+    userId,
+    profile,
+    requestedFileName,
+    requestedDocumentId
+  );
+  if (resolved.error) {
+    return res.status(404).json({ success: false, error: resolved.error });
+  }
+  const { fileName, storageKey, originalName, mimeType } = resolved;
+  const contentType = mimeType || "application/octet-stream";
   res.set({
     "Content-Type": contentType,
-    "Content-Disposition": `${contentType === "application/pdf" ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(version.originalName || fileName)}`,
+    "Content-Disposition": `${contentType === "application/pdf" ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(originalName || fileName)}`,
     "X-Content-Type-Options": "nosniff",
     "Cache-Control": "private, no-store",
   });
-  return fs.createReadStream(absolutePath).pipe(res);
+  const stream = await resumeStorage.getObject(storageKey);
+  return stream.pipe(res);
 }
 
 function getProfileConflict(error) {
@@ -362,7 +468,7 @@ export async function updateOwnProfile(req, res) {
  */
 export async function uploadResumeFile(req, res) {
   try {
-    if (!req.file) {
+    if (!req.file?.buffer) {
       return res.status(400).json({
         success: false,
         error: {
@@ -403,25 +509,80 @@ export async function uploadResumeFile(req, res) {
       profile.studentId = studentId;
     }
 
-    const fileRelativePath = `/uploads/resumes/${req.file.filename}`;
+    const extension = path.extname(req.file.originalname).toLowerCase();
+    const mimeType = RESUME_MIME_TYPES[extension];
+    if (!mimeType) {
+      return res.status(400).json({
+        success: false,
+        error: { code: "INVALID_FILE_TYPE", message: "Only PDF, DOC, and DOCX resumes are allowed." },
+      });
+    }
+    if (!hasExpectedResumeSignature(extension, req.file.buffer)) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: "FILE_CONTENT_MISMATCH",
+          message: "The uploaded file contents do not match its PDF, DOC, or DOCX extension.",
+        },
+      });
+    }
+
+    const originalName = path.basename(String(req.file.originalname).replace(/\\/g, "/"))
+      .replace(/[\u0000-\u001f\u007f]/g, "")
+      .slice(0, 255) || `resume${extension}`;
+    const sha256 = createHash("sha256").update(req.file.buffer).digest("hex");
+    const userId = String(profile.userId);
+    let document = await ResumeDocument.findOne({
+      userId,
+      sha256,
+      size: req.file.size,
+    });
+    if (document && !(await resumeStorage.exists(document.storageKey))) {
+      document = null;
+    }
+    if (!document) {
+      const storageKey = `${randomUUID()}${extension}`;
+      await resumeStorage.putObject({
+        key: storageKey,
+        body: req.file.buffer,
+        contentType: mimeType,
+      });
+      document = await ResumeDocument.create({
+        userId,
+        storageKey,
+        originalName,
+        mimeType,
+        size: req.file.size,
+        sha256,
+        uploadedAt: new Date(),
+      });
+    }
 
     if (
       profile.resumeFileName &&
       !(profile.resumeVersions || []).some((version) => version.fileName === profile.resumeFileName)
     ) {
+      const previousDocument = await ResumeDocument.findOne({
+        userId,
+        storageKey: profile.resumeFileName,
+      });
       profile.resumeVersions.push({
+        documentId: profile.resumeDocumentId || (previousDocument ? String(previousDocument._id) : ""),
         fileName: profile.resumeFileName,
+        storageKey: profile.resumeFileName,
         originalName: profile.resumeOriginalName || profile.resumeFileName,
         mimeType: profile.resumeMimeType || "application/octet-stream",
-        uploadedAt: profile.resumeUploadedAt || profile.updatedAt || new Date(),
+        size: profile.resumeSize,
+        uploadedAt: profile.resumeUploadedAt || null,
       });
     }
-    profile.resumeUrl = fileRelativePath;
-    profile.resumeFileName = req.file.filename;
-    profile.resumeOriginalName = req.file.originalname;
-    profile.resumeMimeType = req.file.mimetype;
-    profile.resumeSize = req.file.size;
-    profile.resumeUploadedAt = new Date();
+    profile.resumeDocumentId = String(document._id);
+    profile.resumeUrl = `/api/v1/students/${encodeURIComponent(profile.studentId)}/resume`;
+    profile.resumeFileName = document.storageKey;
+    profile.resumeOriginalName = document.originalName;
+    profile.resumeMimeType = document.mimeType;
+    profile.resumeSize = document.size;
+    profile.resumeUploadedAt = document.uploadedAt;
 
     profile.completionPercentage = calculateProfileCompletion(profile);
     await profile.save();
@@ -430,9 +591,10 @@ export async function uploadResumeFile(req, res) {
       success: true,
       message: "Resume uploaded successfully",
       data: {
-        resumeUrl: `/api/v1/students/${encodeURIComponent(profile.studentId)}/resume`,
-        originalName: req.file.originalname,
-        sizeBytes: req.file.size,
+        resumeUrl: profile.resumeUrl,
+        resumeDocumentId: profile.resumeDocumentId,
+        originalName: document.originalName,
+        sizeBytes: document.size,
         completionPercentage: profile.completionPercentage,
       },
     });
@@ -450,14 +612,15 @@ export async function uploadResumeFile(req, res) {
 
 export async function getOwnResume(req, res) {
   try {
-    const profile = await StudentProfile.findOne({ userId: String(req.user.id) });
+    const userId = String(req.user.id);
+    const profile = await StudentProfile.findOne({ userId });
     if (!profile) {
       return res.status(404).json({
         success: false,
         error: { code: "STUDENT_NOT_FOUND", message: "Student profile was not found." },
       });
     }
-    return await sendResume(res, profile);
+    return await sendResume(res, userId, profile);
   } catch (error) {
     return res.status(500).json({
       success: false,
@@ -481,7 +644,7 @@ export async function getStudentResume(req, res) {
         error: { code: "FORBIDDEN", message: "Access denied to this resume." },
       });
     }
-    return await sendResume(res, profile);
+    return await sendResume(res, String(profile.userId), profile);
   } catch (error) {
     return res.status(500).json({
       success: false,
@@ -492,18 +655,61 @@ export async function getStudentResume(req, res) {
 
 export async function getInternalResume(req, res) {
   try {
-    const profile = await StudentProfile.findOne({ userId: String(req.params.id) });
-    if (!profile) {
+    const userId = String(req.params.id);
+    const documentId = req.query.documentId ? String(req.query.documentId) : "";
+    const fileName = req.query.fileName ? String(req.query.fileName) : undefined;
+    const profile = documentId ? null : await StudentProfile.findOne({ userId });
+    if (!documentId && !profile) {
       return res.status(404).json({
         success: false,
         error: { code: "STUDENT_NOT_FOUND", message: "Student record was not found." },
       });
     }
-    return await sendResume(res, profile, req.query.fileName ? String(req.query.fileName) : undefined);
+    return await sendResume(res, userId, profile, fileName, documentId);
   } catch (error) {
     return res.status(500).json({
       success: false,
       error: { code: "RESUME_READ_FAILED", message: "Unable to retrieve resume." },
+    });
+  }
+}
+
+export async function getInternalResumeReference(req, res) {
+  try {
+    const userId = String(req.params.id);
+    const documentId = req.query.documentId ? String(req.query.documentId) : "";
+    const fileName = req.query.fileName ? String(req.query.fileName) : undefined;
+    const profile = documentId ? null : await StudentProfile.findOne({ userId });
+    if (!documentId && !profile) {
+      return res.status(404).json({
+        success: false,
+        error: { code: "STUDENT_NOT_FOUND", message: "Student record was not found." },
+      });
+    }
+
+    const resolved = await resolveResumeVersion(userId, profile, fileName, documentId);
+    if (resolved.error) {
+      return res.status(404).json({ success: false, error: resolved.error });
+    }
+    const registeredDocumentId = await recordLegacyResumeDocument(userId, resolved);
+    return res.status(200).json({
+      success: true,
+      data: {
+        available: true,
+        ownerUserId: userId,
+        documentId: registeredDocumentId,
+        storageKey: resolved.storageKey,
+        originalName: resolved.originalName,
+        mimeType: resolved.mimeType,
+        size: resolved.size,
+        sha256: resolved.sha256,
+        uploadedAt: resolved.uploadedAt,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: { code: "RESUME_READ_FAILED", message: "Unable to validate resume reference." },
     });
   }
 }
@@ -819,6 +1025,8 @@ export async function getInternalStudentData(req, res) {
           ? `/api/v1/students/${encodeURIComponent(profile.studentId)}/resume`
           : "",
         resumeFileName: profile.resumeFileName || "",
+        resumeDocumentId: profile.resumeDocumentId || "",
+        resumeStorageKey: profile.resumeFileName || "",
         resumeOriginalName: profile.resumeOriginalName || "",
         resumeMimeType: profile.resumeMimeType || "",
         verificationStatus: profile.verificationStatus,

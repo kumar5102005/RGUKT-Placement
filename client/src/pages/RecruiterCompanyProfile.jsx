@@ -88,6 +88,7 @@ export default function RecruiterCompanyProfile() {
     email: '',
     designation: 'Technical Recruiter',
     phone: '',
+    canManageJobs: false,
     canManageRecruitment: false,
   });
   const currentUserId = String(user?.id || user?._id || '');
@@ -121,6 +122,7 @@ export default function RecruiterCompanyProfile() {
           email: '',
           designation: 'Technical Recruiter',
           phone: '',
+          canManageJobs: false,
           canManageRecruitment: false,
         });
       } else {
@@ -176,13 +178,13 @@ export default function RecruiterCompanyProfile() {
     }
   };
 
-  const handleToggleRecruiterPermission = async (recruiter, canManageRecruitment) => {
+  const handleToggleRecruiterPermission = async (recruiter, permission, enabled) => {
     const recruiterId = recruiter._id || recruiter.userId;
     try {
       const res = await fetch(`${API_BASE}/my/recruiters/${recruiterId}/permissions`, {
         method: 'PATCH',
         headers: headers(),
-        body: JSON.stringify({ canManageRecruitment }),
+        body: JSON.stringify({ [permission]: enabled }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -192,7 +194,8 @@ export default function RecruiterCompanyProfile() {
             entry._id === recruiter._id ? data.data.recruiter : entry
           ),
         }));
-        setRecruiterSuccess(`Recruitment decision permission ${canManageRecruitment ? 'granted' : 'removed'} for ${recruiter.fullName}.`);
+        const label = permission === 'canManageJobs' ? 'job-management' : 'recruitment decision';
+        setRecruiterSuccess(`${label} permission ${enabled ? 'granted' : 'removed'} for ${recruiter.fullName}.`);
         setTimeout(() => setRecruiterSuccess(''), 4000);
       } else {
         setRecruiterError(data.error?.message || 'Failed to update recruiter permissions.');
@@ -490,16 +493,28 @@ export default function RecruiterCompanyProfile() {
                         </span>
                       </div>
                       {r.role !== 'PRIMARY' && (
-                        <label className="inline-flex items-center gap-2 text-[11px] text-slate-400">
-                          <input
-                            type="checkbox"
-                            checked={Boolean(r.canManageRecruitment)}
-                            disabled={!canManageRecruiters || r.status === 'INACTIVE'}
-                            onChange={(e) => handleToggleRecruiterPermission(r, e.target.checked)}
-                            className="accent-emerald-500"
-                          />
-                          Can manage recruitment decisions
-                        </label>
+                        <div className="flex flex-wrap gap-x-4 gap-y-1">
+                          <label className="inline-flex items-center gap-2 text-[11px] text-slate-400">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(r.canManageJobs)}
+                              disabled={!canManageRecruiters || r.status === 'INACTIVE'}
+                              onChange={(e) => handleToggleRecruiterPermission(r, 'canManageJobs', e.target.checked)}
+                              className="accent-emerald-500"
+                            />
+                            Can manage company jobs
+                          </label>
+                          <label className="inline-flex items-center gap-2 text-[11px] text-slate-400">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(r.canManageRecruitment)}
+                              disabled={!canManageRecruiters || r.status === 'INACTIVE'}
+                              onChange={(e) => handleToggleRecruiterPermission(r, 'canManageRecruitment', e.target.checked)}
+                              className="accent-emerald-500"
+                            />
+                            Can manage recruitment decisions
+                          </label>
+                        </div>
                       )}
                     </div>
 
@@ -716,9 +731,18 @@ export default function RecruiterCompanyProfile() {
 
               <div className="p-3 rounded-lg bg-slate-900/60 border border-slate-700/60 text-xs text-slate-400 space-y-1">
                 <p>
-                  Recruiters must already have an active recruiter account. They start read-only; enable decision management only for trusted company members.
+                  Recruiters must already have an active recruiter account. They start read-only; grant only the permissions they need.
                 </p>
               </div>
+              <label className="flex items-start gap-2 text-xs text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={newRecruiter.canManageJobs}
+                  onChange={(e) => setNewRecruiter({ ...newRecruiter, canManageJobs: e.target.checked })}
+                  className="mt-0.5 accent-emerald-500"
+                />
+                <span>Allow this recruiter to create, edit, close, and archive company jobs.</span>
+              </label>
               <label className="flex items-start gap-2 text-xs text-slate-300">
                 <input
                   type="checkbox"

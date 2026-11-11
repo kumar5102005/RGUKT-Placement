@@ -34,6 +34,33 @@ async function findRecruiterCompany(userId) {
   });
 }
 
+export function canManageCompanyJobs(company, userId) {
+  if (String(company.registeredBy) === String(userId)) return true;
+  const recruiter = company.recruiters?.find(
+    (entry) => entry.userId === String(userId) && entry.status === 'ACTIVE'
+  );
+  return Boolean(recruiter && (recruiter.role === 'PRIMARY' || recruiter.canManageJobs));
+}
+
+async function authorizeCompanyJobManagement(userId, companyId, res) {
+  const company = await findRecruiterCompany(userId);
+  if (!company || String(company._id) !== String(companyId)) {
+    res.status(403).json({
+      success: false,
+      error: { code: 'FORBIDDEN', message: 'You can only manage jobs for your own company.' },
+    });
+    return null;
+  }
+  if (!canManageCompanyJobs(company, userId)) {
+    res.status(403).json({
+      success: false,
+      error: { code: 'JOB_MANAGEMENT_FORBIDDEN', message: 'Your company manager has not granted you job-management permission.' },
+    });
+    return null;
+  }
+  return company;
+}
+
 async function getStudentData(studentUserId) {
   if (!studentUserId) {
     const error = new Error('Student account ID is required for eligibility evaluation.');
@@ -126,51 +153,37 @@ async function syncRecruitmentRounds(job) {
 /**
  * POST /api/v1/jobs
  * Create a new job posting.
- * Access: RECRUITER (for own verified company) or ADMIN (for any company).
+ * Access: RECRUITER with job-management permission for their verified company.
  */
 export async function createJob(req, res) {
   try {
     const userId = getUserId(req.user);
-    const userRole = req.user.role;
-
-    let targetCompany = null;
-
-    if (userRole === 'RECRUITER') {
-      targetCompany = await findRecruiterCompany(userId);
-      if (!targetCompany) {
-        return res.status(404).json({
-          success: false,
-          error: {
-            code: 'COMPANY_NOT_FOUND',
-            message: 'You must register a company profile before posting jobs.',
-          },
-        });
-      }
-
-      if (targetCompany.verificationStatus !== 'VERIFIED') {
-        return res.status(403).json({
-          success: false,
-          error: {
-            code: 'COMPANY_NOT_VERIFIED',
-            message: `Your company verification status is currently '${targetCompany.verificationStatus}'. Only verified companies can publish job postings.`,
-          },
-        });
-      }
-    } else if (userRole === 'ADMIN') {
-      const { companyId } = req.body;
-      targetCompany = await Company.findById(companyId);
-      if (!targetCompany) {
-        return res.status(404).json({
-          success: false,
-          error: { code: 'COMPANY_NOT_FOUND', message: 'Target company not found.' },
-        });
-      }
-    } else {
-      return res.status(403).json({
+    const targetCompany = await findRecruiterCompany(userId);
+    if (!targetCompany) {
+      return res.status(404).json({
         success: false,
-        error: { code: 'FORBIDDEN', message: 'Only Recruiters and Admins can create job postings.' },
+        error: {
+          code: 'COMPANY_NOT_FOUND',
+          message: 'You must be associated with a company before posting jobs.',
+        },
       });
     }
+    if (!canManageCompanyJobs(targetCompany, userId)) {
+      return res.status(403).json({
+        success: false,
+        error: { code: 'JOB_MANAGEMENT_FORBIDDEN', message: 'Your company manager has not granted you job-management permission.' },
+      });
+    }
+    if (targetCompany.verificationStatus !== 'VERIFIED') {
+      return res.status(403).json({
+        success: false,
+        error: {
+          code: 'COMPANY_NOT_VERIFIED',
+          message: `Your company verification status is currently '${targetCompany.verificationStatus}'. Only verified companies can publish job postings.`,
+        },
+      });
+    }
+    const userRole = req.user.role;
 
     const {
       title,
@@ -268,6 +281,7 @@ export async function getJobs(req, res) {
     // Role-based visibility
     if (req.user?.role === 'STUDENT') {
       query.status = 'ACTIVE';
+      query.archivedAt = null;
       // Only jobs with upcoming deadline or today
       query.applicationDeadline = { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) };
     } else if (status) {
@@ -381,8 +395,13 @@ export async function getRecruiterJobs(req, res) {
     return res.status(200).json({
       success: true,
       data: {
-        jobs: req.user?.role === 'STUDENT' ? jobs.map(hideStudentRoundDetails) : jobs,
-        company,
+        jobs,
+        company: {
+          _id: company._id,
+          name: company.name,
+          verificationStatus: company.verificationStatus,
+          canManageJobs: canManageCompanyJobs(company, userId),
+        },
       },
     });
   } catch (err) {
@@ -409,8 +428,9 @@ export async function getJobById(req, res) {
       });
     }
 
-    // Students cannot view DRAFT jobs
-    if (req.user?.role === 'STUDENT' && job.status === 'DRAFT') {
+    // Students only see active, non-archived jobs whose deadline has not passed.
+    if (req.user?.role === 'STUDENT' &&
+        (job.status !== 'ACTIVE' || job.archivedAt || job.applicationDeadline < new Date())) {
       return res.status(404).json({
         success: false,
         error: { code: 'JOB_NOT_FOUND', message: 'Job posting is not active.' },
@@ -440,13 +460,11 @@ export async function getJobById(req, res) {
 /**
  * PUT /api/v1/jobs/:id
  * Edit an existing job posting.
- * Access: ADMIN or the RECRUITER who owns the job's company.
+ * Access: Recruiter with job-management permission for the job's company.
  */
 export async function updateJob(req, res) {
   try {
     const userId = getUserId(req.user);
-    const userRole = req.user.role;
-
     const job = await Job.findById(req.params.id);
     if (!job) {
       return res.status(404).json({
@@ -455,16 +473,14 @@ export async function updateJob(req, res) {
       });
     }
 
-    // Authorization check
-    if (userRole === 'RECRUITER') {
-      const company = await findRecruiterCompany(userId);
-      if (!company || company._id.toString() !== job.companyId.toString()) {
-        return res.status(403).json({
-          success: false,
-          error: { code: 'FORBIDDEN', message: 'You can only update jobs for your own company.' },
-        });
-      }
+    if (job.archivedAt) {
+      return res.status(409).json({
+        success: false,
+        error: { code: 'JOB_ARCHIVED', message: 'Archived jobs cannot be edited.' },
+      });
     }
+    const company = await authorizeCompanyJobManagement(userId, job.companyId, res);
+    if (!company) return;
 
     const previousRounds = JSON.stringify(jobRoundSnapshot(job.selectionRounds || []));
     const updatableFields = [
@@ -541,14 +557,12 @@ export async function updateJob(req, res) {
 
 /**
  * DELETE /api/v1/jobs/:id
- * Delete a job posting.
- * Access: ADMIN or the RECRUITER who owns the job's company.
+ * Archive a job posting without deleting application history.
+ * Access: Recruiter with job-management permission for the job's company.
  */
 export async function deleteJob(req, res) {
   try {
     const userId = getUserId(req.user);
-    const userRole = req.user.role;
-
     const job = await Job.findById(req.params.id);
     if (!job) {
       return res.status(404).json({
@@ -557,27 +571,24 @@ export async function deleteJob(req, res) {
       });
     }
 
-    // Authorization check
-    if (userRole === 'RECRUITER') {
-      const company = await findRecruiterCompany(userId);
-      if (!company || company._id.toString() !== job.companyId.toString()) {
-        return res.status(403).json({
-          success: false,
-          error: { code: 'FORBIDDEN', message: 'You can only delete jobs for your own company.' },
-        });
-      }
+    const company = await authorizeCompanyJobManagement(userId, job.companyId, res);
+    if (!company) return;
+    if (job.archivedAt) {
+      return res.status(200).json({
+        success: true,
+        message: 'Job posting is already archived.',
+        data: { job },
+      });
     }
-
-    await Job.findByIdAndDelete(req.params.id);
-
-    // Decrement company placement drive count
-    await Company.findByIdAndUpdate(job.companyId, {
-      $inc: { placementDriveCount: -1 },
-    });
+    job.status = 'CLOSED';
+    job.archivedAt = new Date();
+    job.archivedBy = String(userId);
+    await job.save();
 
     return res.status(200).json({
       success: true,
-      message: 'Job posting deleted successfully.',
+      message: 'Job posting archived. Application history has been retained.',
+      data: { job },
     });
   } catch (err) {
     if (err.name === 'CastError') {
@@ -596,13 +607,12 @@ export async function deleteJob(req, res) {
 /**
  * PATCH /api/v1/jobs/:id/status
  * Quickly transition job status (DRAFT, ACTIVE, PAUSED, CLOSED).
- * Access: ADMIN or RECRUITER (for own company).
+ * Access: Recruiter with job-management permission for the job's company.
  */
 export async function updateJobStatus(req, res) {
   try {
     const { status } = req.body;
     const userId = getUserId(req.user);
-    const userRole = req.user.role;
 
     if (!['DRAFT', 'ACTIVE', 'PAUSED', 'CLOSED'].includes(status)) {
       return res.status(422).json({
@@ -619,15 +629,14 @@ export async function updateJobStatus(req, res) {
       });
     }
 
-    if (userRole === 'RECRUITER') {
-      const company = await findRecruiterCompany(userId);
-      if (!company || company._id.toString() !== job.companyId.toString()) {
-        return res.status(403).json({
-          success: false,
-          error: { code: 'FORBIDDEN', message: 'You can only manage status for your own company jobs.' },
-        });
-      }
+    if (job.archivedAt) {
+      return res.status(409).json({
+        success: false,
+        error: { code: 'JOB_ARCHIVED', message: 'Archived jobs cannot be reopened or changed.' },
+      });
     }
+    const company = await authorizeCompanyJobManagement(userId, job.companyId, res);
+    if (!company) return;
 
     job.status = status;
     await job.save();

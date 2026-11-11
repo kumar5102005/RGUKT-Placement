@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import {
   User,
@@ -19,6 +20,23 @@ import {
 
 const BRANCHES = ["CSE", "ECE", "EEE", "MECH", "CIVIL", "CHEM", "MME"];
 const GENDERS = ["MALE", "FEMALE", "OTHER", "PREFER_NOT_TO_SAY"];
+const MAX_RESUME_SIZE_BYTES = 10 * 1024 * 1024;
+
+async function parseJsonResponse(response) {
+  const text = await response.text();
+  if (!text) return {};
+
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    return { error: { message: text.replace(/<[^>]*>/g, '').trim() || 'Unexpected server response.' } };
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { error: { message: 'The server returned an invalid JSON response.' } };
+  }
+}
 
 export default function StudentProfile() {
   const { accessToken, user, updateUser } = useAuth();
@@ -76,7 +94,7 @@ export default function StudentProfile() {
       const res = await fetch('/api/v1/students/profile', {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
-      const data = await res.json();
+      const data = await parseJsonResponse(res);
       if (data.success && data.data?.profile) {
         const p = data.data.profile;
         setProfile({
@@ -127,7 +145,7 @@ export default function StudentProfile() {
         body: JSON.stringify(payload),
       });
 
-      const data = await res.json();
+      const data = await parseJsonResponse(res);
       if (data.success && data.data?.profile) {
         setMessage('✓ Profile updated successfully!');
         setProfile((prev) => ({
@@ -159,8 +177,8 @@ export default function StudentProfile() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 5 * 1024 * 1024) {
-      setError('Resume file exceeds maximum allowed size of 5 MB.');
+    if (file.size > MAX_RESUME_SIZE_BYTES) {
+      setError(`Resume file exceeds the maximum allowed size of ${Math.round(MAX_RESUME_SIZE_BYTES / (1024 * 1024))} MB.`);
       return;
     }
 
@@ -180,7 +198,7 @@ export default function StudentProfile() {
         body: formData,
       });
 
-      const data = await res.json();
+      const data = await parseJsonResponse(res);
       if (data.success && data.data) {
         setMessage('✓ Resume uploaded successfully!');
         setProfile((prev) => ({
@@ -739,18 +757,17 @@ export default function StudentProfile() {
                 )}
               </div>
               <p className="text-xs text-slate-400 mt-1">
-                Accepted formats: PDF, DOC, DOCX. Maximum file size: 5 MB.
+                Accepted formats: PDF, DOC, DOCX. Maximum file size: 10 MB.
               </p>
               {profile.resumeUrl && (
-                <a
-                  href={profile.resumeUrl}
-                  target="_blank"
-                  rel="noreferrer"
+                <Link
+                  to="/resume/profile"
+                  state={{ fileName: profile.resumeOriginalName || 'resume.pdf' }}
                   className="inline-flex items-center space-x-1 text-xs text-emerald-400 hover:text-emerald-300 font-medium mt-2 transition"
                 >
                   <span>View Current Resume ({profile.resumeOriginalName || 'Download'})</span>
                   <ExternalLink className="w-3.5 h-3.5" />
-                </a>
+                </Link>
               )}
             </div>
 

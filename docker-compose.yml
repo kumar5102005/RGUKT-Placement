@@ -73,6 +73,10 @@ services:
       SERVICE_API_KEY: ${SERVICE_API_KEY:?Set SERVICE_API_KEY in .env}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
       COMPANY_DRIVE_SERVICE_URL: http://company-drive-service:4003
+      RESUME_STORAGE_PROVIDER: ${RESUME_STORAGE_PROVIDER:-local}
+      RESUME_UPLOAD_DIR: /app/uploads/resumes
+      RESUME_S3_BUCKET: ${RESUME_S3_BUCKET:-}
+      RESUME_S3_REGION: ${RESUME_S3_REGION:-}
     expose:
       - "4002"
     volumes:

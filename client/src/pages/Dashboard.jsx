@@ -185,11 +185,15 @@ export default function Dashboard() {
             >
               <div>
                 <Briefcase className="w-6 h-6 text-emerald-400 mb-2" />
-                <h4 className="font-semibold text-white">Drive &amp; Job Management</h4>
-                <p className="text-xs text-slate-400 mt-1">Configure recruitment drives, customizable eligibility rules, and selection round pipelines.</p>
+                <h4 className="font-semibold text-white">{user?.role === 'ADMIN' ? 'Company Job Monitoring' : 'Company Job Management'}</h4>
+                <p className="text-xs text-slate-400 mt-1">
+                  {user?.role === 'ADMIN'
+                    ? 'Review company job postings in a read-only view.'
+                    : 'Manage your company postings, eligibility rules, and selection round pipelines.'}
+                </p>
               </div>
               <span className="text-xs text-emerald-400 font-medium flex items-center space-x-1 mt-4">
-                <span>Manage Drives</span>
+                <span>{user?.role === 'ADMIN' ? 'Monitor Jobs' : 'Manage Jobs'}</span>
                 <ExternalLink className="w-3.5 h-3.5" />
               </span>
             </Link>
@@ -280,4 +284,3 @@ export default function Dashboard() {
     </div>
   );
 }
-

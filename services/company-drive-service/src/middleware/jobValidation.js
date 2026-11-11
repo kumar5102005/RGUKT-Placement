@@ -73,7 +73,6 @@ export function validateJobCreation(req, res, next) {
     workplaceType,
     salary,
     eligibility,
-    companyId,
     selectionRounds,
   } = req.body;
 
@@ -191,11 +190,6 @@ export function validateJobCreation(req, res, next) {
   }
 
   if (selectionRounds !== undefined) validateSelectionRounds(selectionRounds, errors);
-
-  // Admin creating job must specify companyId
-  if (req.user?.role === 'ADMIN' && !companyId) {
-    errors.push({ field: 'companyId', message: 'Admin must provide companyId when creating a job posting.' });
-  }
 
   if (errors.length > 0) {
     return sendValidationError(res, errors);

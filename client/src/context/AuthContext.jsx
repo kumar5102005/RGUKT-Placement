@@ -420,8 +420,8 @@ export function AuthProvider({ children }) {
   const isAuthenticated = Boolean(user && accessToken);
 
   /**
-   * apiFetch – auto-refreshes the access token on 401/403 and retries.
-   * Drop-in replacement for fetch() in every page/component.
+   * apiFetch – auto-refreshes the access token on authentication failures.
+   * Authorization failures (403) must not clear a valid session.
    */
   const apiFetch = useCallback(
     async (url, options = {}) => {
@@ -439,7 +439,7 @@ export function AuthProvider({ children }) {
       });
 
       // Silently refresh on token rejection
-      if (response.status === 401 || response.status === 403) {
+      if (response.status === 401) {
         let newToken = null;
         try {
           newToken = await refreshSession();

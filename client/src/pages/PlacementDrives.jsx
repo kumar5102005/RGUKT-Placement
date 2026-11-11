@@ -14,6 +14,7 @@ const STUDENT_API = '/api/v1/students/profile';
 
 const ALL_BRANCHES = ['CSE', 'ECE', 'EEE', 'MECH', 'CIVIL', 'CHEM', 'MME'];
 const DRIVE_STATUSES = [
+  'DRAFT',
   'UPCOMING',
   'REGISTRATION_OPEN',
   'REGISTRATION_CLOSED',
@@ -37,6 +38,7 @@ export default function PlacementDrives() {
 
   // Modals
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [editingDriveId, setEditingDriveId] = useState(null);
   const [savingDrive, setSavingDrive] = useState(false);
   const [modalError, setModalError] = useState('');
 
@@ -57,6 +59,7 @@ export default function PlacementDrives() {
     maxActiveBacklogs: '0',
     maxHistoryBacklogs: '2',
     registrationDeadline: '',
+    driveStatus: 'REGISTRATION_OPEN',
     rounds: [],
   });
 
@@ -211,8 +214,40 @@ export default function PlacementDrives() {
       maxActiveBacklogs: '0',
       maxHistoryBacklogs: '2',
       registrationDeadline: defaultDeadline,
+      driveStatus: 'REGISTRATION_OPEN',
       rounds: [],
     });
+    setEditingDriveId(null);
+    setModalError('');
+    setIsCreateModalOpen(true);
+  }
+
+  function handleOpenEditModal(drive) {
+    const toLocalDateTime = (value) => {
+      if (!value) return '';
+      const date = new Date(value);
+      return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    };
+    setDriveForm({
+      title: drive.title || '',
+      companyId: drive.companyId || '',
+      academicYear: drive.academicYear || '2025-2026',
+      batchYear: String(drive.batchYear || ''),
+      venue: drive.venue || '',
+      minCgpa: String(drive.eligibilityCriteria?.minCgpa ?? 6.5),
+      allowedBranches: drive.eligibilityCriteria?.allowedBranches || ALL_BRANCHES,
+      maxActiveBacklogs: String(drive.eligibilityCriteria?.maxActiveBacklogs ?? 0),
+      maxHistoryBacklogs: String(drive.eligibilityCriteria?.maxHistoryBacklogs ?? 2),
+      registrationDeadline: toLocalDateTime(drive.registrationWindow?.closeDate),
+      driveStatus: drive.driveStatus || 'REGISTRATION_OPEN',
+      rounds: (drive.recruitmentRounds || []).map((round, index) => ({
+        ...round,
+        roundNumber: index + 1,
+        scheduledDate: toLocalDateTime(round.scheduledDate),
+        durationMinutes: round.durationMinutes ?? '',
+      })),
+    });
+    setEditingDriveId(drive._id);
     setModalError('');
     setIsCreateModalOpen(true);
   }
@@ -237,7 +272,7 @@ export default function PlacementDrives() {
           maxHistoryBacklogs: parseInt(driveForm.maxHistoryBacklogs) || 2,
         },
         registrationWindow: {
-          openDate: new Date(),
+          openDate: drives.find((drive) => drive._id === editingDriveId)?.registrationWindow?.openDate || new Date(),
           closeDate: new Date(driveForm.registrationDeadline),
         },
         recruitmentRounds: driveForm.rounds.map((round, index) => ({
@@ -246,11 +281,11 @@ export default function PlacementDrives() {
           durationMinutes: round.durationMinutes ? Number(round.durationMinutes) : null,
           scheduledDate: round.scheduledDate || null,
         })),
-        driveStatus: 'REGISTRATION_OPEN',
+        driveStatus: driveForm.driveStatus,
       };
 
-      const res = await fetch(DRIVES_API, {
-        method: 'POST',
+      const res = await fetch(editingDriveId ? `${DRIVES_API}/${editingDriveId}` : DRIVES_API, {
+        method: editingDriveId ? 'PUT' : 'POST',
         headers: headers(),
         body: JSON.stringify(payload),
       });
@@ -258,8 +293,9 @@ export default function PlacementDrives() {
       const data = await res.json();
 
       if (res.ok) {
-        setSuccessMsg('Placement drive scheduled successfully!');
+        setSuccessMsg(editingDriveId ? 'Placement drive updated successfully!' : 'Placement drive scheduled successfully!');
         setIsCreateModalOpen(false);
+        setEditingDriveId(null);
         fetchDrives();
         setTimeout(() => setSuccessMsg(''), 4000);
       } else {
@@ -269,6 +305,30 @@ export default function PlacementDrives() {
       setModalError('Network error. Please try again.');
     } finally {
       setSavingDrive(false);
+    }
+  }
+
+  async function handleDeleteDrive(drive) {
+    if (!window.confirm(`Delete or cancel "${drive.title}"? Drives with registrations or linked jobs will be cancelled and retained.`)) return;
+    try {
+      const res = await fetch(`${DRIVES_API}/${drive._id}`, { method: 'DELETE', headers: headers() });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error?.message || 'Unable to delete placement drive.');
+        return;
+      }
+      if (data.data?.archived) {
+        setDrives((previous) => previous.map((entry) =>
+          entry._id === drive._id ? { ...entry, driveStatus: 'CANCELLED' } : entry
+        ));
+        setSuccessMsg(data.message || 'Drive cancelled and history retained.');
+      } else {
+        setDrives((previous) => previous.filter((entry) => entry._id !== drive._id));
+        setSuccessMsg(data.message || 'Unreferenced drive deleted.');
+      }
+      setTimeout(() => setSuccessMsg(''), 4000);
+    } catch {
+      setError('Network error while deleting placement drive.');
     }
   }
 
@@ -542,15 +602,39 @@ export default function PlacementDrives() {
                             <ArrowRight className="w-3.5 h-3.5" />
                           </button>
                         )
-                      ) : drive.canViewCandidates ? (
-                        <button
-                          onClick={() => handleOpenCandidatesModal(drive)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-xs font-medium transition"
-                        >
-                          <Users className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>Candidates ({drive.registeredStudentsCount || 0})</span>
-                        </button>
-                      ) : null}
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          {drive.canViewCandidates && (
+                            <button
+                              onClick={() => handleOpenCandidatesModal(drive)}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-xs font-medium transition"
+                            >
+                              <Users className="w-3.5 h-3.5 text-emerald-400" />
+                              <span>Candidates ({drive.registeredStudentsCount || 0})</span>
+                            </button>
+                          )}
+                          {user?.role === 'ADMIN' && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditModal(drive)}
+                                aria-label={`Edit ${drive.title}`}
+                                className="rounded-lg border border-slate-600 p-2 text-slate-300 hover:bg-slate-700"
+                              >
+                                <Edit3 className="h-4 w-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteDrive(drive)}
+                                aria-label={`Delete or cancel ${drive.title}`}
+                                className="rounded-lg border border-rose-500/30 p-2 text-rose-300 hover:bg-rose-500/10"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -648,7 +732,7 @@ export default function PlacementDrives() {
             <div className="flex items-center justify-between pb-4 border-b border-slate-800">
               <h3 className="text-xl font-bold text-white flex items-center gap-2">
                 <Calendar className="w-5 h-5 text-emerald-400" />
-                <span>Schedule Campus Placement Drive</span>
+                <span>{editingDriveId ? 'Edit Campus Placement Drive' : 'Schedule Campus Placement Drive'}</span>
               </h3>
               <button
                 onClick={() => setIsCreateModalOpen(false)}
@@ -687,6 +771,7 @@ export default function PlacementDrives() {
                       required
                       value={driveForm.companyId}
                       onChange={(e) => setDriveForm({ ...driveForm, companyId: e.target.value })}
+                      disabled={Boolean(editingDriveId)}
                       className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white text-xs focus:outline-none focus:border-emerald-500"
                     >
                       <option value="">Select Company</option>
@@ -704,6 +789,16 @@ export default function PlacementDrives() {
                       onChange={(e) => setDriveForm({ ...driveForm, batchYear: e.target.value })}
                       className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white text-xs focus:outline-none focus:border-emerald-500"
                     />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-1">Drive Status</label>
+                    <select
+                      value={driveForm.driveStatus}
+                      onChange={(e) => setDriveForm({ ...driveForm, driveStatus: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white text-xs focus:outline-none focus:border-emerald-500"
+                    >
+                      {DRIVE_STATUSES.map((status) => <option key={status} value={status}>{status.replaceAll('_', ' ')}</option>)}
+                    </select>
                   </div>
                 </div>
               </div>
@@ -864,7 +959,7 @@ export default function PlacementDrives() {
                   className="px-6 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-semibold text-xs transition flex items-center gap-2 shadow-lg shadow-emerald-600/20"
                 >
                   {savingDrive && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  <span>Publish Placement Drive</span>
+                  <span>{editingDriveId ? 'Save Drive Changes' : 'Publish Placement Drive'}</span>
                 </button>
               </div>
             </form>
@@ -937,14 +1032,13 @@ export default function PlacementDrives() {
 
                         <td className="py-2.5 px-3">
                           {c.resumeFileName ? (
-                            <a
-                              href={`${DRIVES_API}/${selectedDriveForCandidates._id}/registrations/${c._id}/resume`}
-                              target="_blank"
-                              rel="noreferrer"
+                            <Link
+                              to={`/resume/drive/${selectedDriveForCandidates._id}/registration/${c._id}`}
+                              state={{ fileName: c.resumeFileName || 'resume.pdf' }}
                               className="inline-flex items-center gap-1 text-emerald-400 hover:text-emerald-300"
                             >
                               <FileText className="w-3.5 h-3.5" /> View
-                            </a>
+                            </Link>
                           ) : <span className="text-slate-500">Not uploaded</span>}
                         </td>
 

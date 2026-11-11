@@ -61,6 +61,45 @@ async function getApplicationRecruitmentAccess(application, userId) {
   };
 }
 
+async function validateStudentResumeReference(studentUserId, { documentId, fileName }) {
+  const query = documentId
+    ? `documentId=${encodeURIComponent(documentId)}`
+    : `fileName=${encodeURIComponent(fileName)}`;
+  const response = await fetch(
+    `${STUDENT_SERVICE_URL}/api/v1/students/internal/${encodeURIComponent(studentUserId)}/resume-reference?${query}`,
+    { headers: { 'x-service-key': SERVICE_API_KEY } }
+  );
+  let result;
+  try {
+    result = await response.json();
+  } catch {
+    const error = new Error('Student Service returned an invalid resume validation response.');
+    error.statusCode = 502;
+    error.code = 'RESUME_VALIDATION_FAILED';
+    throw error;
+  }
+  if (!response.ok || !result.success) {
+    const isServiceFailure = response.status >= 500;
+    const error = new Error(isServiceFailure
+      ? 'Unable to validate your selected resume. Please try again.'
+      : 'Your selected resume is no longer available. Upload it again before applying.');
+    error.statusCode = isServiceFailure ? 502 : 422;
+    error.code = isServiceFailure ? 'RESUME_VALIDATION_FAILED' : 'RESUME_UNAVAILABLE';
+    throw error;
+  }
+  if (
+    String(result.data?.ownerUserId) !== String(studentUserId) ||
+    !result.data?.documentId ||
+    !result.data?.storageKey
+  ) {
+    const error = new Error('Student Service returned an invalid resume ownership reference.');
+    error.statusCode = 502;
+    error.code = 'RESUME_VALIDATION_FAILED';
+    throw error;
+  }
+  return result.data;
+}
+
 async function notifyApplicationStatus(application, type, message, changedBy) {
   let warning = null;
   try {
@@ -211,6 +250,15 @@ export async function applyForJob(req, res) {
     }
 
     const { job, student, evaluation } = eligibilityResult.data;
+    if (String(student?.userId || '') !== String(studentUserId || '')) {
+      return res.status(502).json({
+        success: false,
+        error: {
+          code: 'STUDENT_RECORD_MISMATCH',
+          message: 'The student record could not be verified for this application.',
+        },
+      });
+    }
     if (job.status !== 'ACTIVE') {
       return res.status(400).json({
         success: false,
@@ -242,6 +290,22 @@ export async function applyForJob(req, res) {
       });
     }
 
+    const selectedResumeDocumentId = student.resumeDocumentId || '';
+    const selectedResumeFileName = student.resumeStorageKey || student.resumeFileName || '';
+    if (!selectedResumeDocumentId && !selectedResumeFileName) {
+      return res.status(422).json({
+        success: false,
+        error: {
+          code: 'RESUME_REQUIRED',
+          message: 'Upload a resume before applying for this job.',
+        },
+      });
+    }
+    const resumeSnapshot = await validateStudentResumeReference(studentUserId, {
+      documentId: selectedResumeDocumentId,
+      fileName: selectedResumeFileName,
+    });
+
     const initialHistory = [
       {
         stage: 'Applied',
@@ -270,10 +334,12 @@ export async function applyForJob(req, res) {
       activeBacklogs: Number(student.activeBacklogs),
       batchYear: Number(student.batchYear),
       resumeUrl: '',
-      resumeFileName: student.resumeFileName || '',
-      resumeOriginalName: student.resumeOriginalName || '',
-      resumeMimeType: student.resumeMimeType || '',
-      resumeSnapshotAt: student.resumeFileName ? new Date() : null,
+      resumeFileName: resumeSnapshot.storageKey,
+      resumeDocumentId: resumeSnapshot.documentId,
+      resumeStorageKey: resumeSnapshot.storageKey,
+      resumeOriginalName: resumeSnapshot.originalName,
+      resumeMimeType: resumeSnapshot.mimeType,
+      resumeSnapshotAt: new Date(),
       skills,
       recruitmentRounds: job.selectionRounds || [],
       coverLetter: coverLetter || '',
@@ -282,7 +348,7 @@ export async function applyForJob(req, res) {
       history: initialHistory,
     });
 
-    if (application.resumeFileName) {
+    if (application.resumeDocumentId) {
       application.resumeUrl = `/api/v1/applications/${application._id}/resume`;
     }
     await application.save();
@@ -301,7 +367,7 @@ export async function applyForJob(req, res) {
     }
     return res.status(err.statusCode || 500).json({
       success: false,
-      error: { code: 'INTERNAL_ERROR', message: err.message },
+      error: { code: err.code || 'INTERNAL_ERROR', message: err.message },
     });
   }
 }
@@ -571,6 +637,13 @@ export async function getApplicationById(req, res) {
 
 export async function getApplicationResume(req, res) {
   try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_ID', message: 'Invalid application ID.' },
+      });
+    }
+
     const application = await Application.findById(req.params.id).lean();
     if (!application) {
       return res.status(404).json({
@@ -578,14 +651,39 @@ export async function getApplicationResume(req, res) {
         error: { code: 'APPLICATION_NOT_FOUND', message: 'Application not found.' },
       });
     }
-    if (!(await authorizeApplicationReader(application, req.user, res))) return;
+    try {
+      if (!(await authorizeApplicationReader(application, req.user, res))) return;
+    } catch (error) {
+      if (req.user?.role !== 'RECRUITER' || error.code !== 'JOB_NOT_FOUND') {
+        throw error;
+      }
 
-    const fileName = application.resumeFileName ||
-      (application.resumeUrl ? application.resumeUrl.split('/').pop() : '');
-    if (!fileName) {
+      const recruiterCompanyId = await getRecruiterCompanyId(String(getUserId(req.user) || ''));
+      if (recruiterCompanyId !== String(application.companyId)) {
+        return res.status(403).json({
+          success: false,
+          error: { code: 'FORBIDDEN', message: 'Access denied to this application.' },
+        });
+      }
       return res.status(404).json({
         success: false,
-        error: { code: 'RESUME_NOT_FOUND', message: 'No resume was attached to this application.' },
+        error: {
+          code: 'APPLICATION_JOB_UNAVAILABLE',
+          message: 'The job associated with this application is no longer available.',
+        },
+      });
+    }
+
+    const legacyUrlFileName = /^\/uploads\/resumes\/([A-Za-z0-9._-]+)$/.exec(application.resumeUrl || '')?.[1] || '';
+    const fileName = application.resumeStorageKey || application.resumeFileName || legacyUrlFileName;
+    const documentId = application.resumeDocumentId || '';
+    if (!documentId && !fileName) {
+      return res.status(404).json({
+        success: false,
+        error: {
+          code: 'APPLICATION_RESUME_UNAVAILABLE',
+          message: 'The original submitted document is unavailable; this application has no recoverable resume reference.',
+        },
       });
     }
     if (!SERVICE_API_KEY) {
@@ -595,10 +693,16 @@ export async function getApplicationResume(req, res) {
       });
     }
 
+    const studentResumeUrl = `${STUDENT_SERVICE_URL}/api/v1/students/internal/${encodeURIComponent(application.studentUserId)}/resume`;
+    const resumeQuery = documentId
+      ? `documentId=${encodeURIComponent(documentId)}`
+      : `fileName=${encodeURIComponent(fileName)}`;
+    const serviceHeaders = { 'x-service-key': SERVICE_API_KEY };
     const response = await fetch(
-      `${STUDENT_SERVICE_URL}/api/v1/students/internal/${encodeURIComponent(application.studentUserId)}/resume?fileName=${encodeURIComponent(fileName)}`,
-      { headers: { 'x-service-key': SERVICE_API_KEY } }
+      `${studentResumeUrl}?${resumeQuery}`,
+      { headers: serviceHeaders }
     );
+
     if (!response.ok) {
       const body = await response.text();
       let errorPayload;

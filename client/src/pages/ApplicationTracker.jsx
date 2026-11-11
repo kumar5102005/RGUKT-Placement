@@ -447,14 +447,13 @@ export default function ApplicationTracker() {
 
                 <div className="flex items-center gap-3">
                   {app.resumeFileName && (
-                    <a
-                      href={`${APPLICATIONS_API}/${app._id}/resume`}
-                      target="_blank"
-                      rel="noreferrer"
+                    <Link
+                      to={`/resume/application/${app._id}`}
+                      state={{ fileName: app.resumeOriginalName || app.resumeFileName }}
                       className="inline-flex items-center gap-1 text-xs text-emerald-400 hover:text-emerald-300"
                     >
                       <FileText className="w-3.5 h-3.5" /> View Resume
-                    </a>
+                    </Link>
                   )}
                   <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${getStageColor(app.stage)}`}>
                     Stage: {app.stage}
@@ -646,15 +645,14 @@ export default function ApplicationTracker() {
 
                     <td className="py-3 px-4 text-right">
                       <div className="inline-flex items-center gap-3">
-                        {app.resumeFileName && (
-                          <a
-                            href={`${APPLICATIONS_API}/${app._id}/resume`}
-                            target="_blank"
-                            rel="noreferrer"
+                        {(app.resumeFileName || (canManageDecisions && app.studentUserId)) && (
+                          <Link
+                            to={`/resume/application/${app._id}`}
+                            state={{ fileName: app.resumeOriginalName || app.resumeFileName || 'resume.pdf' }}
                             className="text-emerald-400 hover:text-emerald-300 inline-flex items-center gap-1"
                           >
                             <FileText className="w-3.5 h-3.5" /> Resume
-                          </a>
+                          </Link>
                         )}
                         <button
                           onClick={() => handleOpenAppModal(app)}

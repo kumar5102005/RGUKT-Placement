@@ -115,7 +115,8 @@ The service computes a dynamic completion score (0 - 100%) every time a profile 
 - **Content-Type**: `multipart/form-data`
 - **Field Name**: `resume`
 - **Allowed Formats**: `.pdf`, `.doc`, `.docx`
-- **File Size Limit**: `5 MB`
+- **File Size Limit**: `10 MB`
+- The service validates the file signature and derives the stored content type from the accepted extension; the client-supplied MIME type is not trusted.
 - **Response `200 OK`**:
   ```json
   {
@@ -131,8 +132,11 @@ The service computes a dynamic completion score (0 - 100%) every time a profile 
   ```
 - The returned URL is a private authenticated route, not a public static file URL.
 - `GET /api/v1/students/profile/resume` lets the authenticated student download their current resume. `GET /api/v1/students/:profileId/resume` is available to the owning student or an admin; `profileId` may be the profile Mongo `_id` or student ID.
-- Internal services may retrieve a resume version with `GET /api/v1/students/internal/:userId/resume?fileName=<stored-file-name>` and the `x-service-key` header. This endpoint is not for browser clients.
-- Docker deployments persist uploaded files in the `student_uploads` volume. Before replacing a pre-volume Student Service container, copy any existing `/app/uploads/resumes` files into that volume to retain legacy uploads.
+- Each upload is stored under a unique immutable key and recorded as a `ResumeDocument` owned by the authenticated student. The profile points to its current document; earlier versions remain in the document collection and are not deleted when the profile changes.
+- Internal services may retrieve an exact version with `GET /api/v1/students/internal/:userId/resume?documentId=<resume-document-id>` and the `x-service-key` header. Legacy references may use `fileName`; they are accepted only when the key belongs to that student's recorded profile history and the object exists.
+- Internal services may validate a reference with `GET /api/v1/students/internal/:userId/resume-reference?documentId=<resume-document-id>` and the `x-service-key` header. The response includes the verified owner, immutable key, document ID, and content metadata; it does not return the file.
+- Local development uses `RESUME_STORAGE_PROVIDER=local` and stores objects under `RESUME_UPLOAD_DIR` (default `uploads/resumes`). Docker Compose mounts this directory in the persistent `student_uploads` named volume. Keep that volume when recreating containers; a newly created volume will not contain earlier files.
+- Production may set `RESUME_STORAGE_PROVIDER=s3`, `RESUME_S3_BUCKET`, and `RESUME_S3_REGION`. Attach an IAM role granting only the required `s3:PutObject`, `s3:GetObject`, and `s3:HeadObject` actions for the resume bucket/prefix. Do not configure public ACLs or public bucket access; enable S3 Block Public Access and route all downloads through the authenticated Student Service. The service uses the AWS SDK credential provider chain and never returns an S3 URL.
 
 ---
 

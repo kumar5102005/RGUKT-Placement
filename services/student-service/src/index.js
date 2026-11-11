@@ -1,13 +1,11 @@
+import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import morgan from "morgan";
-import dotenv from "dotenv";
 import mongoose from "mongoose";
 import { createLogger } from "./logger.js";
 import { connectDB } from "./db.js";
 import studentRoutes from "./routes/studentRoutes.js";
-
-dotenv.config();
 
 const SERVICE_NAME = "student-service";
 const PORT = process.env.PORT || 4002;
@@ -41,6 +39,18 @@ app.use("/", studentRoutes);
 
 // Centralized error handler
 app.use((err, req, res, next) => {
+  if (err?.code === "LIMIT_FILE_SIZE") {
+    err.status = 413;
+    err.code = "FILE_TOO_LARGE";
+    err.message = "Resume exceeds the maximum allowed size of 10 MB.";
+  }
+
+  if (err?.code === "LIMIT_UNEXPECTED_FILE") {
+    err.status = 400;
+    err.code = "INVALID_FILE_FIELD";
+    err.message = "Resume upload must use a single 'resume' field.";
+  }
+
   logger.error("Unhandled error in Student Service", { error: err.message, stack: err.stack });
   res.status(err.status || 500).json({
     success: false,

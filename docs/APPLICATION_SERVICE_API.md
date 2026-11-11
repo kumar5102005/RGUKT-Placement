@@ -24,12 +24,12 @@ Replace `<PORT>` with the port your **application-service** is running on (defau
   - `400 Bad Request` – Job is closed or its application deadline has passed.
   - `409 Conflict` – Duplicate application (student already applied for this job).
 
-The service ignores browser-supplied student identity, academic, resume, and eligibility values. It loads the profile and job from their owning services, reevaluates eligibility, and stores the authoritative profile snapshot. The application stores the resume file name, original name, MIME type, and submission time so it continues to reference the resume submitted with the application after the student uploads a newer one. `GET /my` includes the application's recruitment-round snapshot, including applicant-visible schedule, venue, and status updates.
+The service ignores browser-supplied student identity, academic, resume, and eligibility values. It loads the authenticated student's profile and job from their owning services, reevaluates eligibility, and asks Student Service to validate ownership and file existence before saving. Each application stores the immutable `resumeDocumentId`, storage key, original name, MIME type, and submission time for the exact document selected at submission; later profile uploads do not change that reference. If a student's current resume is missing, invalid, or not owned by that student, application creation is rejected. `GET /my` includes the application's recruitment-round snapshot, including applicant-visible schedule, venue, and status updates.
 
 ### Download an Application Resume
 - **Endpoint**: `GET /:appId/resume`
 - **Roles**: Owning `STUDENT`, recruiter authorized for the application's company, or `ADMIN`
-- **Behavior**: Streams the private resume through Application Service. Resume data is not served from a public static upload path.
+- **Behavior**: Authenticates the caller, verifies the application/job company authorization, then streams the exact private application-time document through Student Service. It never falls back to the student's current profile resume. A missing original document returns a clear unavailable error.
 
 ### Internal: Synchronize Job Recruitment Rounds
 - **Endpoint**: `PUT /internal/jobs/:jobId/recruitment-rounds`
